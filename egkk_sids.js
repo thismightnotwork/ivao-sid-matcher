@@ -67,4 +67,5 @@ const EGKK_SIDS = [
   { sid: "SFD4Y", runways: ["08R"], waypoint: "SFD" },
   { sid: "TIMBA2U", runways: ["08R"], waypoint: "TIMBA" },
   { sid: "TIMBA2Y", runways: ["08R"], waypoint: "TIMBA" },
+  { sid: "ODVIK2Z", runways: ["08R"], waypoint: "ODVIK" },
 ];
