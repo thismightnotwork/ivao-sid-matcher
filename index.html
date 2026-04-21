@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>IVAO SID Matcher – EGKK</title>
+<script src="egkk_sids.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --yellow: #f6ee82;
+  --green:  #6cf86c;
+  --red:    #ff6666;
+  --bg:     #000;
+  --surface:#0a0a0a;
+  --border: #222;
+  --muted:  #888;
+  --text:   #e8e8e8;
+}
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px 24px 60px;
+  min-height: 100vh;
+}
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.logo {
+  width: 34px; height: 34px;
+  border: 2px solid var(--yellow);
+  border-radius: 6px;
+  display: grid; place-items: center;
+  font-size: 18px; color: var(--yellow);
+  flex-shrink: 0;
+}
+.topbar h1 { font-size: 22px; color: var(--yellow); font-weight: 700; }
+.subtitle { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+.layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.panel h2 {
+  font-size: 13px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+  color: var(--yellow);
+  margin-bottom: 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+label span { display: block; margin-bottom: 3px; }
+input[type="text"] {
+  width: 100%; padding: 6px 8px;
+  background: #111; border: 1px solid #333; border-radius: 4px;
+  color: #fff; font-size: 13px; outline: none;
+  text-transform: uppercase;
+}
+input[type="text"]:focus { border-color: var(--yellow); }
+.hint { font-size: 10px; color: #555; margin-top: 3px; }
+.rwy-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
+.rwy-btn {
+  padding: 4px 10px; font-size: 12px; font-weight: 600;
+  border-radius: 4px; border: 1px solid #444;
+  background: #111; color: #aaa; cursor: pointer;
+  transition: all .15s;
+}
+.rwy-btn.active { background: var(--yellow); color: #000; border-color: var(--yellow); }
+.rwy-btn:hover:not(.active) { border-color: #888; color: #fff; }
+#updateBtn {
+  width: 100%; margin-top: 14px;
+  padding: 8px 0; font-size: 13px; font-weight: 600;
+  border: none; border-radius: 4px;
+  background: var(--yellow); color: #000; cursor: pointer;
+  transition: opacity .15s;
+}
+#updateBtn:hover { opacity: .85; }
+#updateBtn:disabled { opacity: .4; cursor: default; }
+.stats { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.stat {
+  background: #111; border: 1px solid var(--border);
+  border-radius: 5px; padding: 6px 12px; min-width: 90px;
+}
+.stat-val { font-size: 20px; font-weight: 700; color: var(--yellow); line-height: 1; }
+.stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: .06em; }
+.table-wrap { overflow-x: auto; border-radius: 5px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+th {
+  background: #111; color: var(--muted);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
+  padding: 6px 8px; text-align: left; white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 6px 8px; border-bottom: 1px solid #141414;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: #050505; }
+tr:hover td { background: rgba(246,238,130,.04); }
+.cs { font-weight: 700; color: var(--yellow); }
+.wp { color: #aad4ff; font-family: monospace; font-size: 11px; }
+.sid-cell { font-family: monospace; font-size: 11px; font-weight: 700; color: #fff; }
+.ok   { color: var(--green); font-weight: 700; font-size: 11px; }
+.miss { color: var(--red);   font-weight: 700; font-size: 11px; }
+#statusBox { font-size: 12px; color: var(--muted); margin-top: 10px; min-height: 16px; }
+#meta      { font-size: 10px; color: #444; margin-top: 4px; }
+.ticker-wrap {
+  position: fixed; bottom: 0; left: 0; width: 100%;
+  height: 36px; background: #0d0d0d;
+  border-top: 1px solid var(--yellow);
+  display: flex; align-items: center; overflow: hidden; z-index: 50;
+}
+.ticker {
+  display: inline-block; white-space: nowrap;
+  padding-left: 100%; font-size: 12px; color: var(--yellow);
+  animation: ticker 40s linear infinite;
+}
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">✈</div>
+  <h1>IVAO SID Matcher – EGKK</h1>
+</div>
+<p class="subtitle">
+  Live IVAO departures from Gatwick &middot; first waypoint matched to active runway SIDs &middot; auto-refreshes every 15 s
+</p>
+
+<div class="layout">
+
+  <div class="panel">
+    <h2>Controls</h2>
+    <label>
+      <span>Airport ICAO</span>
+      <input type="text" id="airportInput" value="EGKK" maxlength="4" />
+      <div class="hint">Only EGKK SIDs are pre-loaded. Other airports will show first-fix only.</div>
+    </label>
+    <label>
+      <span>Active runways</span>
+      <div class="rwy-btns" id="rwyBtns">
+        <button class="rwy-btn active" data-rwy="26L">26L</button>
+        <button class="rwy-btn active" data-rwy="08R">08R</button>
+      </div>
+      <div class="hint">Toggle runways to filter SID selection.</div>
+    </label>
+    <button id="updateBtn">Update from IVAO</button>
+    <div class="hint" style="margin-top:10px; line-height:1.5;">
+      Token: <code style="color:#555">ivao-token-server.onrender.com/token</code><br>
+      SID DB: <code style="color:#555">egkk_sids.js</code> (64 SIDs &middot; 08R + 26L)
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Live departures</h2>
+    <div class="stats">
+      <div class="stat"><div class="stat-val" id="statTotal">&mdash;</div><div class="stat-lbl">Aircraft</div></div>
+      <div class="stat"><div class="stat-val" id="statMatched">&mdash;</div><div class="stat-lbl">SID matched</div></div>
+      <div class="stat"><div class="stat-val" id="statUnmatched">&mdash;</div><div class="stat-lbl">No SID</div></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px">Callsign</th>
+            <th style="width:60px">Dep</th>
+            <th style="width:55px">Runway</th>
+            <th style="width:70px">First fix</th>
+            <th style="width:110px">Matched SID</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+          <tr><td colspan="6" style="color:#555;padding:20px 8px;text-align:center">
+            Press <strong style="color:var(--yellow)">Update from IVAO</strong> to load live traffic.
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="statusBox">Idle.</div>
+    <div id="meta"></div>
+  </div>
+
+</div>
+
+<div class="ticker-wrap">
+  <div class="ticker">
+    IVAO SID Matcher — EGKK — Live data via IVAO Whazzup v2 — Token: ivao-token-server.onrender.com &nbsp;&nbsp;&nbsp;
+    IVAO SID Matcher — EGKK — Live data via IVAO Whazzup v2 — Token: ivao-token-server.onrender.com
+  </div>
+</div>
+
+<script>
+const activeRunways = new Set(['26L','08R']);
+document.querySelectorAll('.rwy-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const rwy = btn.dataset.rwy;
+    if (activeRunways.has(rwy)) { activeRunways.delete(rwy); btn.classList.remove('active'); }
+    else { activeRunways.add(rwy); btn.classList.add('active'); }
+  });
+});
+
+function norm(s) { return (s||'').toString().trim().toUpperCase(); }
+
+function firstWaypoint(route) {
+  return (norm(route).split(/\s+/).filter(Boolean)
+    .find(t => /^[A-Z]{2,8}\d?[A-Z]?$/.test(t)) || '');
+}
+
+function matchSid(firstWp, activeRwys) {
+  if (!firstWp || !window.EGKK_SIDS) return null;
+  const candidates = EGKK_SIDS.filter(s => s.waypoint === firstWp);
+  if (!candidates.length) return null;
+  const scoped = candidates.filter(s => s.runways.some(r => activeRwys.has(r)));
+  return scoped[0] || candidates[0] || null;
+}
+
+async function getToken() {
+  const res = await fetch('https://ivao-token-server.onrender.com/token');
+  if (!res.ok) throw new Error('Token server error ' + res.status);
+  const data = await res.json();
+  if (!data.token) throw new Error('No token in response');
+  return data.token;
+}
+
+async function fetchIvaoDepartures(airport) {
+  const token = await getToken();
+  const res = await fetch('https://api.ivao.aero/v2/tracker/whazzup', {
+    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
+  });
+  if (!res.ok) throw new Error('IVAO API error ' + res.status);
+  const data = await res.json();
+  if (!data.clients?.pilots) throw new Error('Unexpected IVAO response shape');
+  return data.clients.pilots
+    .filter(p => p.flightPlan?.departureId?.toUpperCase() === airport)
+    .map(p => ({
+      callsign: norm(p.callsign),
+      airport,
+      route: norm(p.flightPlan?.route || ''),
+      runway: ''
+    }));
+}
+
+const airportInput  = document.getElementById('airportInput');
+const updateBtn     = document.getElementById('updateBtn');
+const resultsBody   = document.getElementById('resultsBody');
+const statusBox     = document.getElementById('statusBox');
+const metaBox       = document.getElementById('meta');
+const statTotal     = document.getElementById('statTotal');
+const statMatched   = document.getElementById('statMatched');
+const statUnmatched = document.getElementById('statUnmatched');
+let lastAirport = '';
+
+async function doUpdate() {
+  const airport = norm(airportInput.value) || 'EGKK';
+  lastAirport = airport;
+  updateBtn.disabled = true;
+  updateBtn.textContent = 'Loading…';
+  statusBox.textContent = 'Fetching IVAO departures…';
+  resultsBody.innerHTML = '<tr><td colspan="6" style="color:#555;padding:20px 8px;text-align:center">Contacting IVAO…</td></tr>';
+  try {
+    const deps = await fetchIvaoDepartures(airport);
+    if (!deps.length) {
+      resultsBody.innerHTML = '<tr><td colspan="6" style="color:#555;padding:20px 8px;text-align:center">No IVAO departures for ' + airport + '.</td></tr>';
+      statusBox.textContent = 'No departures found for ' + airport + '.';
+      statTotal.textContent = '0'; statMatched.textContent = '0'; statUnmatched.textContent = '0';
+    } else {
+      const rows = deps.map(dep => {
+        const wp  = firstWaypoint(dep.route);
+        const hit = matchSid(wp, activeRunways);
+        return { ...dep, firstWp: wp, sid: hit ? hit.sid : '' };
+      });
+      const matched = rows.filter(r => r.sid).length;
+      statTotal.textContent     = String(rows.length);
+      statMatched.textContent   = String(matched);
+      statUnmatched.textContent = String(rows.length - matched);
+      resultsBody.innerHTML = rows.map(r => `
+        <tr>
+          <td class="cs">${r.callsign}</td>
+          <td>${r.airport}</td>
+          <td>${r.runway || '—'}</td>
+          <td class="wp">${r.firstWp || '—'}</td>
+          <td class="sid-cell">${r.sid || '—'}</td>
+          <td class="${r.sid ? 'ok' : 'miss'}">${r.sid ? 'SID matched' : 'No SID'}</td>
+        </tr>
+      `).join('');
+      statusBox.textContent = airport + ': ' + rows.length + ' departures · ' + matched + ' SIDs matched · ' + (rows.length - matched) + ' unmatched.';
+    }
+    metaBox.textContent = 'Last update: ' + new Date().toUTCString() + ' — Active runways: ' + ([...activeRunways].join(', ') || 'none selected');
+  } catch(e) {
+    console.error(e);
+    resultsBody.innerHTML = '<tr><td colspan="6" style="color:var(--red);padding:16px 8px">Error: ' + e.message + '</td></tr>';
+    statusBox.textContent = 'Error loading IVAO data.';
+  } finally {
+    updateBtn.disabled = false;
+    updateBtn.textContent = 'Update from IVAO';
+  }
+}
+
+updateBtn.addEventListener('click', doUpdate);
+setInterval(() => { if (lastAirport) doUpdate(); }, 15000);
+</script>
+</body>
+</html>
