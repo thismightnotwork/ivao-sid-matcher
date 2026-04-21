@@ -2,8 +2,28 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>IVAO SID Matcher – EGKK</title>
+<title>IVAO SID Matcher</title>
+<script src="egbb_sids.js"></script>
+<script src="egcc_sids.js"></script>
+<script src="egff_sids.js"></script>
+<script src="eggd_sids.js"></script>
+<script src="eggp_sids.js"></script>
+<script src="eggw_sids.js"></script>
+<script src="eghh_sids.js"></script>
+<script src="eghi_sids.js"></script>
+<script src="egja_sids.js"></script>
+<script src="egjb_sids.js"></script>
+<script src="egjj_sids.js"></script>
+<script src="egkb_sids.js"></script>
 <script src="egkk_sids.js"></script>
+<script src="eglc_sids.js"></script>
+<script src="eglf_sids.js"></script>
+<script src="egll_sids.js"></script>
+<script src="egmc_sids.js"></script>
+<script src="egnm_sids.js"></script>
+<script src="egnr_sids.js"></script>
+<script src="egnx_sids.js"></script>
+<script src="egss_sids.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,13 +77,14 @@ body {
 }
 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 label span { display: block; margin-bottom: 3px; }
-input[type="text"] {
+input[type="text"], select {
   width: 100%; padding: 6px 8px;
   background: #111; border: 1px solid #333; border-radius: 4px;
   color: #fff; font-size: 13px; outline: none;
-  text-transform: uppercase;
 }
-input[type="text"]:focus { border-color: var(--yellow); }
+input[type="text"] { text-transform: uppercase; }
+input[type="text"]:focus, select:focus { border-color: var(--yellow); }
+select option { background: #111; }
 .hint { font-size: 10px; color: #555; margin-top: 3px; }
 .rwy-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
 .rwy-btn {
@@ -133,10 +154,10 @@ tr:hover td { background: rgba(246,238,130,.04); }
 
 <div class="topbar">
   <div class="logo">✈</div>
-  <h1>IVAO SID Matcher – EGKK</h1>
+  <h1>IVAO SID Matcher</h1>
 </div>
 <p class="subtitle">
-  Live IVAO departures from Gatwick &middot; first waypoint matched to active runway SIDs &middot; auto-refreshes every 15 s
+  Live IVAO departures &middot; first waypoint matched to active runway SIDs &middot; auto-refreshes every 15 s
 </p>
 
 <div class="layout">
@@ -144,22 +165,18 @@ tr:hover td { background: rgba(246,238,130,.04); }
   <div class="panel">
     <h2>Controls</h2>
     <label>
-      <span>Airport ICAO</span>
-      <input type="text" id="airportInput" value="EGKK" maxlength="4" />
-      <div class="hint">Only EGKK SIDs are pre-loaded. Other airports will show first-fix only.</div>
+      <span>Airport</span>
+      <select id="airportSelect"></select>
     </label>
     <label>
       <span>Active runways</span>
-      <div class="rwy-btns" id="rwyBtns">
-        <button class="rwy-btn active" data-rwy="26L">26L</button>
-        <button class="rwy-btn active" data-rwy="08R">08R</button>
-      </div>
+      <div class="rwy-btns" id="rwyBtns"></div>
       <div class="hint">Toggle runways to filter SID selection.</div>
     </label>
     <button id="updateBtn">Update from IVAO</button>
-    <div class="hint" style="margin-top:10px; line-height:1.5;">
+    <div class="hint" style="margin-top:10px; line-height:1.6;">
       Token: <code style="color:#555">ivao-token-server.onrender.com/token</code><br>
-      SID DB: <code style="color:#555">egkk_sids.js</code> (64 SIDs &middot; 08R + 26L)
+      SID DB: <code style="color:#555" id="sidDbInfo">—</code>
     </div>
   </div>
 
@@ -197,45 +214,154 @@ tr:hover td { background: rgba(246,238,130,.04); }
 
 <div class="ticker-wrap">
   <div class="ticker">
-    IVAO SID Matcher — EGKK — Live data via IVAO Whazzup v2 — Token: ivao-token-server.onrender.com &nbsp;&nbsp;&nbsp;
-    IVAO SID Matcher — EGKK — Live data via IVAO Whazzup v2 — Token: ivao-token-server.onrender.com
+    IVAO SID Matcher &nbsp;—&nbsp; Live data via IVAO Whazzup v2 &nbsp;—&nbsp; Token: ivao-token-server.onrender.com &nbsp;&nbsp;&nbsp;&nbsp;
+    IVAO SID Matcher &nbsp;—&nbsp; Live data via IVAO Whazzup v2 &nbsp;—&nbsp; Token: ivao-token-server.onrender.com
   </div>
 </div>
 
 <script>
-const activeRunways = new Set(['26L','08R']);
-document.querySelectorAll('.rwy-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const rwy = btn.dataset.rwy;
-    if (activeRunways.has(rwy)) { activeRunways.delete(rwy); btn.classList.remove('active'); }
-    else { activeRunways.add(rwy); btn.classList.add('active'); }
-  });
+// ─── SID registry ────────────────────────────────────────────────────────────
+// Maps ICAO → { sids: [...], runways: [...unique runways] }
+const SID_REGISTRY = {
+  EGBB: { name: 'Birmingham',      sids: typeof EGBB_SIDS !== 'undefined' ? EGBB_SIDS : [] },
+  EGCC: { name: 'Manchester',      sids: typeof EGCC_SIDS !== 'undefined' ? EGCC_SIDS : [] },
+  EGFF: { name: 'Cardiff',         sids: typeof EGFF_SIDS !== 'undefined' ? EGFF_SIDS : [] },
+  EGGD: { name: 'Bristol',         sids: typeof EGGD_SIDS !== 'undefined' ? EGGD_SIDS : [] },
+  EGGP: { name: 'Liverpool',       sids: typeof EGGP_SIDS !== 'undefined' ? EGGP_SIDS : [] },
+  EGGW: { name: 'Luton',           sids: typeof EGGW_SIDS !== 'undefined' ? EGGW_SIDS : [] },
+  EGHH: { name: 'Bournemouth',     sids: typeof EGHH_SIDS !== 'undefined' ? EGHH_SIDS : [] },
+  EGHI: { name: 'Southampton',     sids: typeof EGHI_SIDS !== 'undefined' ? EGHI_SIDS : [] },
+  EGJA: { name: 'Alderney',        sids: typeof EGJA_SIDS !== 'undefined' ? EGJA_SIDS : [] },
+  EGJB: { name: 'Guernsey',        sids: typeof EGJB_SIDS !== 'undefined' ? EGJB_SIDS : [] },
+  EGJJ: { name: 'Jersey',          sids: typeof EGJJ_SIDS !== 'undefined' ? EGJJ_SIDS : [] },
+  EGKB: { name: 'Biggin Hill',     sids: typeof EGKB_SIDS !== 'undefined' ? EGKB_SIDS : [] },
+  EGKK: { name: 'Gatwick',         sids: typeof EGKK_SIDS !== 'undefined' ? EGKK_SIDS : [] },
+  EGLC: { name: 'London City',     sids: typeof EGLC_SIDS !== 'undefined' ? EGLC_SIDS : [] },
+  EGLF: { name: 'Farnborough',     sids: typeof EGLF_SIDS !== 'undefined' ? EGLF_SIDS : [] },
+  EGLL: { name: 'Heathrow',        sids: typeof EGLL_SIDS !== 'undefined' ? EGLL_SIDS : [] },
+  EGMC: { name: 'Southend',        sids: typeof EGMC_SIDS !== 'undefined' ? EGMC_SIDS : [] },
+  EGNM: { name: 'Leeds Bradford',  sids: typeof EGNM_SIDS !== 'undefined' ? EGNM_SIDS : [] },
+  EGNR: { name: 'Hawarden',        sids: typeof EGNR_SIDS !== 'undefined' ? EGNR_SIDS : [] },
+  EGNX: { name: 'East Midlands',   sids: typeof EGNX_SIDS !== 'undefined' ? EGNX_SIDS : [] },
+  EGSS: { name: 'Stansted',        sids: typeof EGSS_SIDS !== 'undefined' ? EGSS_SIDS : [] },
+};
+
+// Derive unique runway list for each airport from SID data
+Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
+  const rwys = [...new Set(entry.sids.flatMap(s => s.runways))].sort();
+  entry.runways = rwys;
+  console.log(`[SID Registry] ${icao} (${entry.name}): ${entry.sids.length} SIDs, runways: [${rwys.join(', ')}]`);
 });
 
-function norm(s) { return (s||'').toString().trim().toUpperCase(); }
+// ─── Airport selector ─────────────────────────────────────────────────────────
+const airportSelect = document.getElementById('airportSelect');
+Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
+  const opt = document.createElement('option');
+  opt.value = icao;
+  opt.textContent = `${icao} – ${entry.name}`;
+  if (icao === 'EGKK') opt.selected = true;
+  airportSelect.appendChild(opt);
+});
+
+// ─── Active runways state ─────────────────────────────────────────────────────
+let activeRunways = new Set();
+
+function buildRunwayButtons(icao) {
+  const container = document.getElementById('rwyBtns');
+  container.innerHTML = '';
+  activeRunways.clear();
+  const entry = SID_REGISTRY[icao];
+  if (!entry || !entry.runways.length) {
+    container.innerHTML = '<span style="color:#555;font-size:11px">No runway data</span>';
+    console.log(`[Runways] No runway data for ${icao}`);
+    return;
+  }
+  entry.runways.forEach(rwy => {
+    activeRunways.add(rwy); // default all active
+    const btn = document.createElement('button');
+    btn.className = 'rwy-btn active';
+    btn.dataset.rwy = rwy;
+    btn.textContent = rwy;
+    btn.addEventListener('click', () => {
+      if (activeRunways.has(rwy)) {
+        activeRunways.delete(rwy);
+        btn.classList.remove('active');
+        console.log(`[Runways] Deactivated runway ${rwy} at ${icao}. Active: [${[...activeRunways].join(', ')}]`);
+      } else {
+        activeRunways.add(rwy);
+        btn.classList.add('active');
+        console.log(`[Runways] Activated runway ${rwy} at ${icao}. Active: [${[...activeRunways].join(', ')}]`);
+      }
+    });
+    container.appendChild(btn);
+  });
+  console.log(`[Runways] Built runway buttons for ${icao}: [${entry.runways.join(', ')}]`);
+}
+
+function updateSidDbInfo(icao) {
+  const entry = SID_REGISTRY[icao];
+  const el = document.getElementById('sidDbInfo');
+  if (entry) {
+    el.textContent = `${icao.toLowerCase()}_sids.js (${entry.sids.length} SIDs · ${entry.runways.join(' + ')})`;
+  } else {
+    el.textContent = 'No SID database loaded';
+  }
+}
+
+airportSelect.addEventListener('change', () => {
+  const icao = airportSelect.value;
+  console.log(`[Airport] Selected: ${icao} (${SID_REGISTRY[icao]?.name})`);
+  buildRunwayButtons(icao);
+  updateSidDbInfo(icao);
+});
+
+// Initialise for default airport
+buildRunwayButtons('EGKK');
+updateSidDbInfo('EGKK');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function norm(s) { return (s || '').toString().trim().toUpperCase(); }
 
 function firstWaypoint(route) {
-  return (norm(route).split(/\s+/).filter(Boolean)
-    .find(t => /^[A-Z]{2,8}\d?[A-Z]?$/.test(t)) || '');
+  const tokens = norm(route).split(/\s+/).filter(Boolean);
+  const wp = tokens.find(t => /^[A-Z]{2,8}\d?[A-Z]?$/.test(t)) || '';
+  console.log(`[Route] Parsing route "${route}" → first waypoint: "${wp || '(none)'}"`);
+  return wp;
 }
 
-function matchSid(firstWp, activeRwys) {
-  if (!firstWp || !window.EGKK_SIDS) return null;
-  const candidates = EGKK_SIDS.filter(s => s.waypoint === firstWp);
+function matchSid(firstWp, icao, activeRwys) {
+  const entry = SID_REGISTRY[icao];
+  if (!firstWp) {
+    console.log(`[SID Match] ${icao}: no first waypoint to match`);
+    return null;
+  }
+  if (!entry || !entry.sids.length) {
+    console.log(`[SID Match] ${icao}: no SID database loaded`);
+    return null;
+  }
+  const candidates = entry.sids.filter(s => s.waypoint === firstWp);
+  console.log(`[SID Match] ${icao} wp="${firstWp}": ${candidates.length} candidate(s):`, candidates.map(s => s.sid));
   if (!candidates.length) return null;
   const scoped = candidates.filter(s => s.runways.some(r => activeRwys.has(r)));
-  return scoped[0] || candidates[0] || null;
+  console.log(`[SID Match] ${icao} wp="${firstWp}": ${scoped.length} runway-scoped candidate(s):`, scoped.map(s => s.sid));
+  const result = scoped[0] || candidates[0] || null;
+  console.log(`[SID Match] ${icao} wp="${firstWp}" → matched SID: ${result ? result.sid : '(none)'}`);
+  return result;
 }
 
+// ─── IVAO API ─────────────────────────────────────────────────────────────────
 async function getToken() {
+  console.log('[Token] Fetching token from ivao-token-server.onrender.com…');
   const res = await fetch('https://ivao-token-server.onrender.com/token');
   if (!res.ok) throw new Error('Token server error ' + res.status);
   const data = await res.json();
   if (!data.token) throw new Error('No token in response');
+  console.log('[Token] Token received OK');
   return data.token;
 }
 
 async function fetchIvaoDepartures(airport) {
+  console.log(`[IVAO] Fetching whazzup for airport: ${airport}`);
   const token = await getToken();
   const res = await fetch('https://api.ivao.aero/v2/tracker/whazzup', {
     headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
@@ -243,7 +369,9 @@ async function fetchIvaoDepartures(airport) {
   if (!res.ok) throw new Error('IVAO API error ' + res.status);
   const data = await res.json();
   if (!data.clients?.pilots) throw new Error('Unexpected IVAO response shape');
-  return data.clients.pilots
+  const allPilots = data.clients.pilots;
+  console.log(`[IVAO] Total pilots online: ${allPilots.length}`);
+  const deps = allPilots
     .filter(p => p.flightPlan?.departureId?.toUpperCase() === airport)
     .map(p => ({
       callsign: norm(p.callsign),
@@ -251,9 +379,12 @@ async function fetchIvaoDepartures(airport) {
       route: norm(p.flightPlan?.route || ''),
       runway: ''
     }));
+  console.log(`[IVAO] Departures from ${airport}: ${deps.length}`);
+  if (deps.length) console.log('[IVAO] Departure callsigns:', deps.map(d => d.callsign));
+  return deps;
 }
 
-const airportInput  = document.getElementById('airportInput');
+// ─── UI ───────────────────────────────────────────────────────────────────────
 const updateBtn     = document.getElementById('updateBtn');
 const resultsBody   = document.getElementById('resultsBody');
 const statusBox     = document.getElementById('statusBox');
@@ -264,8 +395,10 @@ const statUnmatched = document.getElementById('statUnmatched');
 let lastAirport = '';
 
 async function doUpdate() {
-  const airport = norm(airportInput.value) || 'EGKK';
+  const airport = airportSelect.value || 'EGKK';
   lastAirport = airport;
+  console.group(`[Update] ${airport} @ ${new Date().toUTCString()}`);
+  console.log(`[Update] Active runways: [${[...activeRunways].join(', ')}]`);
   updateBtn.disabled = true;
   updateBtn.textContent = 'Loading…';
   statusBox.textContent = 'Fetching IVAO departures…';
@@ -273,19 +406,23 @@ async function doUpdate() {
   try {
     const deps = await fetchIvaoDepartures(airport);
     if (!deps.length) {
-      resultsBody.innerHTML = '<tr><td colspan="6" style="color:#555;padding:20px 8px;text-align:center">No IVAO departures for ' + airport + '.</td></tr>';
-      statusBox.textContent = 'No departures found for ' + airport + '.';
+      resultsBody.innerHTML = `<tr><td colspan="6" style="color:#555;padding:20px 8px;text-align:center">No IVAO departures for ${airport}.</td></tr>`;
+      statusBox.textContent = `No departures found for ${airport}.`;
       statTotal.textContent = '0'; statMatched.textContent = '0'; statUnmatched.textContent = '0';
+      console.log(`[Update] No departures for ${airport}.`);
     } else {
       const rows = deps.map(dep => {
         const wp  = firstWaypoint(dep.route);
-        const hit = matchSid(wp, activeRunways);
+        const hit = matchSid(wp, airport, activeRunways);
         return { ...dep, firstWp: wp, sid: hit ? hit.sid : '' };
       });
       const matched = rows.filter(r => r.sid).length;
+      const unmatched = rows.length - matched;
       statTotal.textContent     = String(rows.length);
       statMatched.textContent   = String(matched);
-      statUnmatched.textContent = String(rows.length - matched);
+      statUnmatched.textContent = String(unmatched);
+      console.log(`[Update] Results: ${rows.length} total, ${matched} matched, ${unmatched} unmatched`);
+      console.table(rows.map(r => ({ callsign: r.callsign, firstWp: r.firstWp, sid: r.sid || '—' })));
       resultsBody.innerHTML = rows.map(r => `
         <tr>
           <td class="cs">${r.callsign}</td>
@@ -296,16 +433,17 @@ async function doUpdate() {
           <td class="${r.sid ? 'ok' : 'miss'}">${r.sid ? 'SID matched' : 'No SID'}</td>
         </tr>
       `).join('');
-      statusBox.textContent = airport + ': ' + rows.length + ' departures · ' + matched + ' SIDs matched · ' + (rows.length - matched) + ' unmatched.';
+      statusBox.textContent = `${airport}: ${rows.length} departures · ${matched} SIDs matched · ${unmatched} unmatched.`;
     }
     metaBox.textContent = 'Last update: ' + new Date().toUTCString() + ' — Active runways: ' + ([...activeRunways].join(', ') || 'none selected');
   } catch(e) {
-    console.error(e);
-    resultsBody.innerHTML = '<tr><td colspan="6" style="color:var(--red);padding:16px 8px">Error: ' + e.message + '</td></tr>';
+    console.error('[Update] Error:', e);
+    resultsBody.innerHTML = `<tr><td colspan="6" style="color:var(--red);padding:16px 8px">Error: ${e.message}</td></tr>`;
     statusBox.textContent = 'Error loading IVAO data.';
   } finally {
     updateBtn.disabled = false;
     updateBtn.textContent = 'Update from IVAO';
+    console.groupEnd();
   }
 }
 
