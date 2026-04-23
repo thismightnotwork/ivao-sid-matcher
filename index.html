@@ -216,7 +216,7 @@ tr:hover td { background: rgba(246,238,130,.04); }
       <strong style="color:var(--muted)">Semicircular rule (ICAO Annex 2)</strong><br>
       <span style="color:var(--green)">Odd FL</span> &rarr; 000&deg;&ndash;179&deg; (Eastbound)<br>
       <span style="color:#aad4ff">Even FL</span> &rarr; 180&deg;&ndash;359&deg; (Westbound)<br>
-      <span style="color:#555;font-size:10px">Applied FL060+. Coords via IVAO API + fallback table.</span>
+      <span style="color:#555;font-size:10px">Per-region rules applied. Metric/non-ICAO regions skipped.</span>
     </div>
   </div>
 
@@ -319,11 +319,8 @@ const AIRPORT_COORDS_STATIC = {
   FAOR:[-26.1392, 28.2460], GMMN:[ 33.3675, -7.5900],
 };
 
-// Runtime cache — populated by IVAO airport API lookups, persists across refreshes
 const coordCache = { ...AIRPORT_COORDS_STATIC };
 
-// Fetch coords for a single ICAO from IVAO airport API.
-// Returns [lat, lon] or null on failure. Results are stored in coordCache.
 async function fetchAirportCoords(icao, token) {
   if (coordCache[icao]) return coordCache[icao];
   try {
@@ -332,7 +329,6 @@ async function fetchAirportCoords(icao, token) {
     });
     if (!res.ok) return null;
     const d = await res.json();
-    // IVAO airport object has d.latitude / d.longitude
     const lat = d.latitude  ?? d.lat ?? d.geometry?.coordinates?.[1];
     const lon = d.longitude ?? d.lng ?? d.lon ?? d.geometry?.coordinates?.[0];
     if (lat == null || lon == null) return null;
@@ -342,7 +338,6 @@ async function fetchAirportCoords(icao, token) {
   } catch { return null; }
 }
 
-// Given a list of ICAOs and a token, pre-populate coordCache for any unknown ones in parallel.
 async function prefetchCoords(icaos, token) {
   const unknown = [...new Set(icaos)].filter(ic => ic && !coordCache[ic]);
   if (!unknown.length) return;
@@ -379,29 +374,117 @@ Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
   entry.runways = rwys;
 });
 
+// ─── Per-region cruising level rule ─────────────────────────────────────────────────
+//
+// Rule types:
+//   'icao'    – ICAO Annex 2 / ECAC: odd FL eastbound (000–179°), even FL westbound
+//   'faa'     – FAA/TCAS (US, Canada, Caribbean): same odd-E/even-W but feet-based;
+//               for IFR above FL180 identical parity so treat same as 'icao'
+//   'metric'  – Russia, China, CIS: metric levels, no ICAO SCR applicable → skip
+//   'inverted'– Some southern hemisphere states invert (even E / odd W); flag as
+//               'inverted' so we can apply correctly
+//   'skip'    – Region doesn’t use ICAO SCR; show neutral SCR? tooltip
+//
+// Keyed on the FIRST LETTER of the destination ICAO prefix.
+// Where a single letter is ambiguous (e.g. B = Iceland+Greenland+parts of Asia)
+// we use TWO-character prefix matching first.
+const REGION_RULES = {
+  // Two-char overrides (checked first)
+  'BI': 'icao',  // Iceland
+  'BG': 'icao',  // Greenland
+  'BK': 'skip',  // Kosovo (unrecognised, use skip)
+  'RC': 'icao',  // Taiwan
+  'RJ': 'icao',  // Japan
+  'RK': 'icao',  // South Korea
+  'RO': 'icao',  // Okinawa (US/Japan)
+  'RP': 'icao',  // Philippines
+  'VH': 'icao',  // Hong Kong
+  'VT': 'icao',  // Thailand
+  'VY': 'icao',  // Myanmar
+  'WA': 'icao',  // Indonesia (western)
+  'WI': 'icao',  // Indonesia
+  'WM': 'icao',  // Malaysia
+  'WS': 'icao',  // Singapore
+  'ZS': 'icao',  // Shanghai FIR (China domestic – metric in practice, skip)
+  'ZB': 'metric','ZG': 'metric','ZH': 'metric','ZJ': 'metric',
+  'ZL': 'metric','ZP': 'metric','ZU': 'metric','ZW': 'metric','ZY': 'metric',
+  'UB': 'metric','UC': 'metric','UD': 'metric','UG': 'metric','UK': 'metric',
+  'UL': 'metric','UM': 'metric','UN': 'metric','UO': 'metric','UR': 'metric',
+  'US': 'metric','UT': 'metric','UU': 'metric',
+  // One-char rules
+  'E': 'icao',   // Northern Europe (UK, Scandinavia, Baltic)
+  'L': 'icao',   // Southern Europe (France, Italy, Spain, etc.)
+  'K': 'faa',    // USA
+  'C': 'faa',    // Canada
+  'M': 'faa',    // Caribbean / Central America
+  'T': 'faa',    // Caribbean territories
+  'P': 'faa',    // Pacific (US controlled)
+  'N': 'inverted', // South Pacific (Fiji, Samoa, Tonga)
+  'Y': 'inverted', // Australia
+  'A': 'inverted', // Antarctica region
+  'F': 'icao',   // Sub-equatorial Africa (mixed, ICAO applies in most)
+  'G': 'icao',   // West Africa
+  'H': 'icao',   // East Africa
+  'D': 'icao',   // West Africa (Accra FIR etc)
+  'O': 'icao',   // Middle East (Iran, Iraq, Gulf)
+  'S': 'icao',   // South America
+  'V': 'icao',   // South/SE Asia (India, Bangladesh, etc.) – ICAO scheme
+  'Z': 'metric', // China (catch-all)
+  'U': 'metric', // Russia/CIS (catch-all)
+  'R': 'icao',   // Far East (Japan/Korea overridden above; rest ICAO-adjacent)
+  'B': 'icao',   // Iceland / Greenland (overridden above per 2-char)
+};
+
+function scrRuleForIcao(icao) {
+  if (!icao || icao.length < 2) return 'icao';
+  const two = icao.slice(0, 2).toUpperCase();
+  const one = icao[0].toUpperCase();
+  return REGION_RULES[two] ?? REGION_RULES[one] ?? 'icao';
+}
+
 // ─── FL parser ────────────────────────────────────────────────────────────────
-// "F380" → 38, "FL380" → 38, "M0840F380" → 38, "A045" → 45,
-// "VFR" → -1, "S1130" → null (metric), "" / "0" → null
+//
+// IVAO sends flightPlan.level as a string, e.g. "F350", "FL350", "M0840F350"
+// The digits after F are the FL in tens of feet – e.g. F350 = FL350 = 35,000 ft.
+// We store FL as THOUSANDS of feet so parity works: FL350 → 35 (odd ✓).
+//
+// Returns FL in thousands (integer), -1 for VFR, null if not parseable.
 function parseFl(flightPlan) {
   const raw = flightPlan?.level;
   if (raw === undefined || raw === null) return null;
   const s = String(raw).trim().toUpperCase();
   if (!s || s === '0') return null;
   if (s === 'VFR' || s === 'V') return -1;
-  // Compound e.g. "M0840F380" — grab trailing F-part
+
+  // Helper: given raw FL digits (e.g. 350 from "F350"), return thousands
+  // F350 = 35,000 ft = FL350; stored as 35.
+  // If someone files F35000 (feet directly) that’s >=10000 → divide by 1000.
+  const flDigitsToThousands = n => {
+    if (n >= 10000) return Math.round(n / 1000); // raw feet
+    if (n >= 1000)  return Math.round(n / 100);  // shouldn’t happen but safe
+    return Math.round(n / 10);                   // normal: 350 → 35
+  };
+
+  // Compound e.g. "M0840F350" — grab trailing F-part
   const compound = s.match(/F(\d+)$/);
-  if (compound) { const n = parseInt(compound[1], 10); return n >= 1000 ? Math.round(n / 100) : n; }
-  // "F380" or "FL380"
+  if (compound) return flDigitsToThousands(parseInt(compound[1], 10));
+
+  // "F350" or "FL350"
   const fMatch = s.match(/^FL?(\d+)$/);
-  if (fMatch) { const n = parseInt(fMatch[1], 10); return n >= 1000 ? Math.round(n / 100) : n; }
-  // Altitude hundreds: "A045"
+  if (fMatch) return flDigitsToThousands(parseInt(fMatch[1], 10));
+
+  // Altitude in hundreds of feet: "A045" → 45 hundreds = 4,500 ft = ~FL045
+  // Store as single-digit thousands for parity: 4 (even)
   const aMatch = s.match(/^A(\d+)$/);
-  if (aMatch) return parseInt(aMatch[1], 10);
-  // Metric RVSM "S1130" — skip
-  if (/^S\d+$/.test(s)) return null;
-  // Plain number
+  if (aMatch) return Math.round(parseInt(aMatch[1], 10) / 10);
+
+  // Metric RVSM e.g. "S1130" — return null (skip SCR)
+  if (/^[SM]\d+$/.test(s)) return null;
+
+  // Plain integer – treat same as F-digits
   const n = parseInt(s, 10);
-  if (!isNaN(n) && n > 0) return n >= 1000 ? Math.round(n / 100) : n;
+  if (!isNaN(n) && n > 0) return flDigitsToThousands(n);
+
   return null;
 }
 
@@ -410,7 +493,7 @@ function isVfr(flightPlan) {
   return rules === 'V' || rules === 'VFR' || parseFl(flightPlan) === -1;
 }
 
-// ─── Semicircular rule ────────────────────────────────────────────────────────
+// ─── Semicircular rule check ─────────────────────────────────────────────────────
 function bearingDeg(lat1, lon1, lat2, lon2) {
   const D2R = Math.PI / 180;
   const dLon = (lon2 - lon1) * D2R;
@@ -423,43 +506,64 @@ function bearingDeg(lat1, lon1, lat2, lon2) {
 function checkSemicircular(flightPlan, depIcao, destIcao) {
   if (isVfr(flightPlan))
     return { status: 'vfr', fl: null, bearing: null, direction: null, reason: 'VFR – semicircular rule N/A' };
+
   const fl = parseFl(flightPlan);
   if (fl === null)
     return { status: 'unknown', fl: null, bearing: null, direction: null, reason: 'No cruise level filed' };
+
+  // Check destination region rule
+  const rule = scrRuleForIcao(destIcao);
+  if (rule === 'metric')
+    return { status: 'unknown', fl, bearing: null, direction: null,
+      reason: `Dest ${destIcao}: metric cruising levels region – ICAO SCR not applicable` };
+  if (rule === 'skip')
+    return { status: 'unknown', fl, bearing: null, direction: null,
+      reason: `Dest ${destIcao}: non-ICAO SCR region – check local rules` };
+
+  // Below FL060 – rule not applicable
   if (fl < 6)
-    return { status: 'ok', fl, bearing: null, direction: null, reason: `FL${String(fl).padStart(3,'0')} – below FL060, rule N/A` };
+    return { status: 'ok', fl, bearing: null, direction: null,
+      reason: `FL${String(fl * 10).padStart(3,'0')} – below FL060, rule N/A` };
 
   const depC  = coordCache[depIcao];
   const destC = coordCache[destIcao];
   if (!depC || !destC) {
     const missing = [!depC && depIcao, !destC && destIcao].filter(Boolean).join(', ');
-    return { status: 'unknown', fl, bearing: null, direction: null, reason: `Bearing unknown – coords not found for ${missing}` };
+    return { status: 'unknown', fl, bearing: null, direction: null,
+      reason: `Bearing unknown – coords not found for ${missing}` };
   }
 
   const bearing   = bearingDeg(depC[0], depC[1], destC[0], destC[1]);
+  // For 'inverted' (southern hemisphere some states): even E / odd W
+  const inverted  = rule === 'inverted';
   const direction = bearing < 180 ? 'E' : 'W';
-  const expParity = direction === 'E' ? 'odd' : 'even';
+  // ICAO: odd E, even W. Inverted: even E, odd W.
+  const expParity = inverted
+    ? (direction === 'E' ? 'even' : 'odd')
+    : (direction === 'E' ? 'odd'  : 'even');
   const actParity = fl % 2 === 1 ? 'odd' : 'even';
-  const rvsm      = fl >= 290 && fl <= 410;
+  const rvsm      = fl >= 29 && fl <= 41;  // FL290–FL410
   const ok        = actParity === expParity;
-  const flStr     = `FL${String(fl).padStart(3,'0')}`;
+  const flStr     = `FL${String(fl * 10).padStart(3,'0')}`;
   const dirWord   = direction === 'E' ? 'Eastbound' : 'Westbound';
   const alt1      = fl % 2 === 0 ? fl - 1 : fl + 1;
   const alt2      = fl % 2 === 0 ? fl + 1 : fl - 1;
+  const ruleNote  = inverted ? ' [inverted rule]' : '';
 
   return {
     status: ok ? 'ok' : 'error',
     fl, bearing: Math.round(bearing), direction, expParity, actParity, rvsm,
     reason: ok
-      ? `${flStr} ${dirWord} (${Math.round(bearing)}°) – ${actParity} FL ✓${rvsm ? ' [RVSM]' : ''}`
-      : `${flStr} ${dirWord} (${Math.round(bearing)}°)\nExpected ${expParity} FL, got ${actParity}\nNearest correct: FL${String(alt1).padStart(3,'0')} or FL${String(alt2).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
+      ? `${flStr} ${dirWord} (${Math.round(bearing)}°) – ${actParity} FL ✓${rvsm ? ' [RVSM]' : ''}${ruleNote}`
+      : `${flStr} ${dirWord} (${Math.round(bearing)}°)${ruleNote}\nExpected ${expParity} FL, got ${actParity}\nNearest correct: FL${String(alt1*10).padStart(3,'0')} or FL${String(alt2*10).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
   };
 }
 
 // ─── Cell renderers ───────────────────────────────────────────────────────────
 function flCellHtml(check) {
   if (!check) return '<td class="fl-muted">—</td>';
-  const flStr    = check.fl !== null ? `FL${String(check.fl).padStart(3,'0')}` : '—';
+  // Display FL as conventional 3-digit (FL350 not FL35)
+  const flStr    = check.fl !== null ? `FL${String(check.fl * 10).padStart(3,'0')}` : '—';
   const dirBadge = check.direction ? `<span class="badge badge-${check.direction.toLowerCase()}">${check.direction}</span>` : '';
   if (check.status === 'vfr')     return `<td class="fl-warn">${flStr}${dirBadge}</td>`;
   if (check.status === 'unknown') return `<td class="fl-muted">${flStr}${dirBadge}</td>`;
@@ -598,7 +702,6 @@ async function doUpdate() {
   resultsBody.innerHTML = '<tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">Contacting IVAO…</td></tr>';
 
   try {
-    // Single token fetch reused for whazzup + airport coord lookups
     const token = await getToken();
 
     statusBox.textContent = 'Fetching departures…';
@@ -611,7 +714,6 @@ async function doUpdate() {
       return;
     }
 
-    // Pre-fetch coords for any unknown dep or dest ICAOs in parallel
     const icaosNeeded = [airport, ...deps.map(d => d.dest)].filter(Boolean);
     statusBox.textContent = 'Resolving airport coords…';
     await prefetchCoords(icaosNeeded, token);
