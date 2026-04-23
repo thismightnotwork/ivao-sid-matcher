@@ -146,7 +146,6 @@ tr:hover td { background: rgba(246,238,130,.04); }
 }
 .badge-e { background: #1a3a1a; color: var(--green); border: 1px solid #2a5a2a; }
 .badge-w { background: #1a1a3a; color: #aad4ff;      border: 1px solid #2a2a5a; }
-/* Tooltip */
 .has-tip { position: relative; cursor: default; }
 .has-tip .tip {
   display: none;
@@ -217,7 +216,7 @@ tr:hover td { background: rgba(246,238,130,.04); }
       <strong style="color:var(--muted)">Semicircular rule (ICAO Annex 2)</strong><br>
       <span style="color:var(--green)">Odd FL</span> &rarr; 000&deg;&ndash;179&deg; (Eastbound)<br>
       <span style="color:#aad4ff">Even FL</span> &rarr; 180&deg;&ndash;359&deg; (Westbound)<br>
-      <span style="color:#555;font-size:10px">Applied FL060+. Bearing dep&rarr;dest great-circle.</span>
+      <span style="color:#555;font-size:10px">Applied FL060+. Coords via IVAO API + fallback table.</span>
     </div>
   </div>
 
@@ -264,9 +263,8 @@ tr:hover td { background: rgba(246,238,130,.04); }
 </div>
 
 <script>
-// ─── Airport coords (dep→dest bearing for semicircular rule) ─────────────────
-const AIRPORT_COORDS = {
-  // UK & Ireland
+// ─── Hardcoded coord fallback table ─────────────────────────────────────────────────
+const AIRPORT_COORDS_STATIC = {
   EGAA:[ 54.6575, -6.2158], EGAC:[ 54.6181, -5.8725], EGAE:[ 55.0427, -7.1600],
   EGBB:[ 52.4539, -1.7480], EGBD:[ 52.8617, -1.3272], EGBE:[ 52.3697, -1.4797],
   EGBJ:[ 51.8942, -2.1672], EGBP:[ 51.6681, -2.0564], EGCC:[ 53.3537, -2.2750],
@@ -284,53 +282,72 @@ const AIRPORT_COORDS = {
   EIDW:[ 53.4213, -6.2700], EICK:[ 51.8413, -8.4911], EIDL:[ 55.0442, -8.3411],
   EINN:[ 52.7022, -8.9253], EIWF:[ 52.1872, -7.0958], EISG:[ 54.2803, -8.5992],
   EIKY:[ 52.1811, -9.5236], EIIM:[ 53.0967, -9.9278],
-  // Benelux
   EHAM:[ 52.3086,  4.7639], EHRD:[ 51.9569,  4.4372], EBBR:[ 50.9014,  4.4844],
   EBCI:[ 50.4722,  4.4528], ELLX:[ 49.6233,  6.2044],
-  // France
   LFPG:[ 49.0097,  2.5478], LFPO:[ 48.7233,  2.3794], LFPB:[ 48.9694,  2.4411],
   LFMN:[ 43.6653,  7.2150], LFLL:[ 45.7256,  5.0811], LFLY:[ 45.7272,  4.9442],
   LFRS:[ 47.1533, -1.6108], LFBD:[ 44.8283, -0.7153], LFBO:[ 43.6293,  1.3678],
   LFBZ:[ 43.4686, -1.5231], LFRN:[ 48.0697, -1.7317], LFRB:[ 48.4478, -4.4181],
-  // Iberia
   LEMD:[ 40.4719, -3.5626], LEBL:[ 41.2971,  2.0785], LEPA:[ 39.5517,  2.7388],
   LEMG:[ 36.6749, -4.4991], LEAL:[ 38.2822, -0.5581], LEVC:[ 39.4893, -0.4816],
   LPPT:[ 38.7813, -9.1359], LPPR:[ 41.2481, -8.6814], LPFR:[ 37.0144, -7.9659],
-  // Germany / Austria / Switzerland
   EDDL:[ 51.2895,  6.7668], EDDF:[ 50.0264,  8.5431], EDDM:[ 48.3537, 11.7750],
   EDDB:[ 52.3667, 13.5033], EDDH:[ 53.6303,  9.9882], EDDS:[ 48.6900,  9.2217],
   EDDK:[ 50.8659,  7.1428], EDDP:[ 51.4239, 12.2364], EDDN:[ 49.4987, 11.0669],
   LSZH:[ 47.4647,  8.5492], LSGG:[ 46.2381,  6.1089], LOWW:[ 48.1103, 16.5697],
   LOWI:[ 47.2603, 11.3436],
-  // Italy / Malta
   LIRF:[ 41.8003, 12.2389], LIML:[ 45.4454,  9.2764], LIPZ:[ 45.5053, 12.3519],
   LIRN:[ 40.8864, 14.2908], LICJ:[ 38.1759, 13.0914], LMML:[ 35.8572, 14.4775],
-  // Scandinavia
   EKCH:[ 55.6181, 12.6561], EKBI:[ 55.7403,  8.5539], ESSA:[ 59.6519, 17.9186],
   ESGG:[ 57.6628, 12.2797], ESMX:[ 56.9261, 14.7281], ENGM:[ 60.1939, 11.1004],
   ENBR:[ 60.2934,  5.2181], ENVA:[ 63.4578, 10.9258], EFHK:[ 60.3172, 24.9633],
   EFTU:[ 60.5147, 22.2628],
-  // Eastern Europe
   LKPR:[ 50.1008, 14.2600], EPWA:[ 52.1657, 20.9671], EPKK:[ 50.0777, 19.7847],
   LHBP:[ 47.4369, 19.2556], LROP:[ 44.5722, 26.1022], UKBB:[ 50.3450, 30.8947],
   UUEE:[ 55.9736, 37.4125], UUDD:[ 55.4083, 37.9064], EVRA:[ 56.9236, 23.9711],
   EYVI:[ 54.6339, 25.2858], EETU:[ 59.4133, 24.8328],
-  // Greece / Cyprus / Turkey
   LGAV:[ 37.9364, 23.9445], LGTS:[ 40.5197, 22.9709], LCPH:[ 34.7178, 32.4856],
   LTBA:[ 40.9769, 28.8146], LTFM:[ 41.2753, 28.7519], LTAI:[ 36.8987, 30.8006],
-  // Middle East / Asia
   OMDB:[ 25.2532, 55.3657], OMAA:[ 24.4330, 54.6511], OERK:[ 24.9578, 46.6988],
   OTHH:[ 25.2731, 51.6081], OKBK:[ 29.2267, 47.9689],
   VHHH:[ 22.3080,113.9185], RJTT:[ 35.5494,139.7798], WSSS:[ 1.3644,103.9915],
   VIDP:[ 28.5565, 77.1000], VABB:[ 19.0887, 72.8679],
-  // North America
   KJFK:[ 40.6413,-73.7781], KLAX:[ 33.9425,-118.408], KORD:[ 41.9742,-87.9073],
   KMIA:[ 25.7953,-80.2870], KEWR:[ 40.6895,-74.1745], KBOS:[ 42.3656,-71.0096],
   CYYZ:[ 43.6772,-79.6306], CYVR:[ 49.1947,-123.184], CYUL:[ 45.4706,-73.7408],
-  // Rest of world
-  YSSY:[-33.9461,151.1772], YMML:[-37.6690,144.841], NZAA:[-37.0082,174.792],
+  YSSY:[-33.9461,151.1772], YMML:[-37.6690,144.841],  NZAA:[-37.0082,174.792],
   FAOR:[-26.1392, 28.2460], GMMN:[ 33.3675, -7.5900],
 };
+
+// Runtime cache — populated by IVAO airport API lookups, persists across refreshes
+const coordCache = { ...AIRPORT_COORDS_STATIC };
+
+// Fetch coords for a single ICAO from IVAO airport API.
+// Returns [lat, lon] or null on failure. Results are stored in coordCache.
+async function fetchAirportCoords(icao, token) {
+  if (coordCache[icao]) return coordCache[icao];
+  try {
+    const res = await fetch(`https://api.ivao.aero/v2/airports/${icao}`, {
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }
+    });
+    if (!res.ok) return null;
+    const d = await res.json();
+    // IVAO airport object has d.latitude / d.longitude
+    const lat = d.latitude  ?? d.lat ?? d.geometry?.coordinates?.[1];
+    const lon = d.longitude ?? d.lng ?? d.lon ?? d.geometry?.coordinates?.[0];
+    if (lat == null || lon == null) return null;
+    const coords = [parseFloat(lat), parseFloat(lon)];
+    coordCache[icao] = coords;
+    return coords;
+  } catch { return null; }
+}
+
+// Given a list of ICAOs and a token, pre-populate coordCache for any unknown ones in parallel.
+async function prefetchCoords(icaos, token) {
+  const unknown = [...new Set(icaos)].filter(ic => ic && !coordCache[ic]);
+  if (!unknown.length) return;
+  await Promise.allSettled(unknown.map(ic => fetchAirportCoords(ic, token)));
+}
 
 // ─── SID registry ─────────────────────────────────────────────────────────────
 const SID_REGISTRY = {
@@ -363,67 +380,37 @@ Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
 });
 
 // ─── FL parser ────────────────────────────────────────────────────────────────
-// IVAO Whazzup v2 sends flightPlan.level as a STRING, e.g.:
-//   "F380"       → FL380  (most common — F + FL digits)
-//   "FL380"      → FL380
-//   "S1130"      → metric RVSM, extract trailing digits as FL approx (ignore)
-//   "M0840F380"  → cruise mach + FL, take the F-part
-//   "VFR"        → VFR
-//   "0" / ""     → not filed
-//   bare integer → treat same as F-value if ≤999, else feet
-// Returns a flight level as an integer in hundreds of feet (FL380 → 38),
-// -1 for VFR, or null if not parseable / not filed.
+// "F380" → 38, "FL380" → 38, "M0840F380" → 38, "A045" → 45,
+// "VFR" → -1, "S1130" → null (metric), "" / "0" → null
 function parseFl(flightPlan) {
   const raw = flightPlan?.level;
   if (raw === undefined || raw === null) return null;
-
   const s = String(raw).trim().toUpperCase();
   if (!s || s === '0') return null;
-
-  // VFR
   if (s === 'VFR' || s === 'V') return -1;
-
-  // Compound: "M0840F380" — speed+level, grab the F-part
+  // Compound e.g. "M0840F380" — grab trailing F-part
   const compound = s.match(/F(\d+)$/);
-  if (compound) {
-    const n = parseInt(compound[1], 10);
-    // F380 → 38 (hundreds), F38000 → feet → divide
-    return n >= 1000 ? Math.round(n / 100) : n;
-  }
-
+  if (compound) { const n = parseInt(compound[1], 10); return n >= 1000 ? Math.round(n / 100) : n; }
   // "F380" or "FL380"
   const fMatch = s.match(/^FL?(\d+)$/);
-  if (fMatch) {
-    const n = parseInt(fMatch[1], 10);
-    return n >= 1000 ? Math.round(n / 100) : n;
-  }
-
-  // Altitude in hundreds of feet: "A045" → 45
+  if (fMatch) { const n = parseInt(fMatch[1], 10); return n >= 1000 ? Math.round(n / 100) : n; }
+  // Altitude hundreds: "A045"
   const aMatch = s.match(/^A(\d+)$/);
   if (aMatch) return parseInt(aMatch[1], 10);
-
-  // Metric / RVSM metric: "S1130" — metric level, skip SCR check
+  // Metric RVSM "S1130" — skip
   if (/^S\d+$/.test(s)) return null;
-
   // Plain number
   const n = parseInt(s, 10);
   if (!isNaN(n) && n > 0) return n >= 1000 ? Math.round(n / 100) : n;
-
   return null;
 }
 
 function isVfr(flightPlan) {
   const rules = String(flightPlan?.flightRules || '').toUpperCase();
-  if (rules === 'V' || rules === 'VFR') return true;
-  if (parseFl(flightPlan) === -1) return true;
-  return false;
+  return rules === 'V' || rules === 'VFR' || parseFl(flightPlan) === -1;
 }
 
 // ─── Semicircular rule ────────────────────────────────────────────────────────
-// ICAO Annex 2 / UK AIP ENR 1.7
-//   000–179° → odd FL   (FL090, FL110 … FL390 …)
-//   180–359° → even FL  (FL100, FL120 … FL380 …)
-// Applied FL060+. VFR exempt.
 function bearingDeg(lat1, lon1, lat2, lon2) {
   const D2R = Math.PI / 180;
   const dLon = (lon2 - lon1) * D2R;
@@ -436,41 +423,36 @@ function bearingDeg(lat1, lon1, lat2, lon2) {
 function checkSemicircular(flightPlan, depIcao, destIcao) {
   if (isVfr(flightPlan))
     return { status: 'vfr', fl: null, bearing: null, direction: null, reason: 'VFR – semicircular rule N/A' };
-
   const fl = parseFl(flightPlan);
   if (fl === null)
     return { status: 'unknown', fl: null, bearing: null, direction: null, reason: 'No cruise level filed' };
-
-  // Below FL060 – rule not applicable
   if (fl < 6)
     return { status: 'ok', fl, bearing: null, direction: null, reason: `FL${String(fl).padStart(3,'0')} – below FL060, rule N/A` };
 
-  const depC  = AIRPORT_COORDS[depIcao];
-  const destC = AIRPORT_COORDS[destIcao];
-
+  const depC  = coordCache[depIcao];
+  const destC = coordCache[destIcao];
   if (!depC || !destC) {
     const missing = [!depC && depIcao, !destC && destIcao].filter(Boolean).join(', ');
-    return { status: 'unknown', fl, bearing: null, direction: null, reason: `Bearing unknown – no coords for ${missing}` };
+    return { status: 'unknown', fl, bearing: null, direction: null, reason: `Bearing unknown – coords not found for ${missing}` };
   }
 
   const bearing   = bearingDeg(depC[0], depC[1], destC[0], destC[1]);
   const direction = bearing < 180 ? 'E' : 'W';
   const expParity = direction === 'E' ? 'odd' : 'even';
-  // fl is in hundreds: FL090=9 (odd✓ east), FL100=10 (even✓ west)
   const actParity = fl % 2 === 1 ? 'odd' : 'even';
   const rvsm      = fl >= 290 && fl <= 410;
   const ok        = actParity === expParity;
   const flStr     = `FL${String(fl).padStart(3,'0')}`;
   const dirWord   = direction === 'E' ? 'Eastbound' : 'Westbound';
-  const altFl1    = fl % 2 === 0 ? fl - 1 : fl + 1;
-  const altFl2    = fl % 2 === 0 ? fl + 1 : fl - 1;
+  const alt1      = fl % 2 === 0 ? fl - 1 : fl + 1;
+  const alt2      = fl % 2 === 0 ? fl + 1 : fl - 1;
 
   return {
-    status:    ok ? 'ok' : 'error',
+    status: ok ? 'ok' : 'error',
     fl, bearing: Math.round(bearing), direction, expParity, actParity, rvsm,
     reason: ok
       ? `${flStr} ${dirWord} (${Math.round(bearing)}°) – ${actParity} FL ✓${rvsm ? ' [RVSM]' : ''}`
-      : `${flStr} ${dirWord} (${Math.round(bearing)}°)\nExpected ${expParity} FL, got ${actParity}\nNearest correct: FL${String(altFl1).padStart(3,'0')} or FL${String(altFl2).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
+      : `${flStr} ${dirWord} (${Math.round(bearing)}°)\nExpected ${expParity} FL, got ${actParity}\nNearest correct: FL${String(alt1).padStart(3,'0')} or FL${String(alt2).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
   };
 }
 
@@ -478,8 +460,7 @@ function checkSemicircular(flightPlan, depIcao, destIcao) {
 function flCellHtml(check) {
   if (!check) return '<td class="fl-muted">—</td>';
   const flStr    = check.fl !== null ? `FL${String(check.fl).padStart(3,'0')}` : '—';
-  const dirBadge = check.direction
-    ? `<span class="badge badge-${check.direction.toLowerCase()}">${check.direction}</span>` : '';
+  const dirBadge = check.direction ? `<span class="badge badge-${check.direction.toLowerCase()}">${check.direction}</span>` : '';
   if (check.status === 'vfr')     return `<td class="fl-warn">${flStr}${dirBadge}</td>`;
   if (check.status === 'unknown') return `<td class="fl-muted">${flStr}${dirBadge}</td>`;
   if (check.status === 'ok')      return `<td class="fl-ok">${flStr}${dirBadge}</td>`;
@@ -550,7 +531,6 @@ airportSelect.addEventListener('change', () => {
   buildRunwayButtons(airportSelect.value);
   updateSidDbInfo(airportSelect.value);
 });
-
 buildRunwayButtons('EGKK');
 updateSidDbInfo('EGKK');
 
@@ -580,8 +560,7 @@ async function getToken() {
   return data.token;
 }
 
-async function fetchIvaoDepartures(airport) {
-  const token = await getToken();
+async function fetchIvaoDepartures(airport, token) {
   const res = await fetch('https://api.ivao.aero/v2/tracker/whazzup', {
     headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }
   });
@@ -615,11 +594,15 @@ async function doUpdate() {
   lastAirport = airport;
   updateBtn.disabled = true;
   updateBtn.textContent = 'Loading…';
-  statusBox.textContent = 'Fetching IVAO departures…';
+  statusBox.textContent = 'Fetching token…';
   resultsBody.innerHTML = '<tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">Contacting IVAO…</td></tr>';
 
   try {
-    const deps = await fetchIvaoDepartures(airport);
+    // Single token fetch reused for whazzup + airport coord lookups
+    const token = await getToken();
+
+    statusBox.textContent = 'Fetching departures…';
+    const deps = await fetchIvaoDepartures(airport, token);
 
     if (!deps.length) {
       resultsBody.innerHTML = `<tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">No IVAO departures found for ${airport}.</td></tr>`;
@@ -627,6 +610,11 @@ async function doUpdate() {
       ['statTotal','statMatched','statUnmatched','statFlErr'].forEach(id => document.getElementById(id).textContent = '0');
       return;
     }
+
+    // Pre-fetch coords for any unknown dep or dest ICAOs in parallel
+    const icaosNeeded = [airport, ...deps.map(d => d.dest)].filter(Boolean);
+    statusBox.textContent = 'Resolving airport coords…';
+    await prefetchCoords(icaosNeeded, token);
 
     const rows = deps.map(dep => {
       const wp    = firstWaypoint(dep.route);
@@ -658,7 +646,7 @@ async function doUpdate() {
     `).join('');
 
     statusBox.textContent = `${airport}: ${rows.length} departure(s) · ${matched} SID matched · ${flErrors} FL error(s).`;
-    metaBox.textContent   = 'Last update: ' + new Date().toUTCString() + ' · Active runways: ' + ([...activeRunways].join(', ') || 'none');
+    metaBox.textContent   = 'Last update: ' + new Date().toUTCString() + ' · Active runways: ' + ([...activeRunways].join(', ') || 'none') + ` · Coords cached: ${Object.keys(coordCache).length}`;
 
   } catch (e) {
     resultsBody.innerHTML = `<tr><td colspan="8" style="color:var(--red);padding:16px 8px">Error: ${e.message}</td></tr>`;
