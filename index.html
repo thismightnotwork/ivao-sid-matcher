@@ -31,6 +31,7 @@
   --yellow: #f6ee82;
   --green:  #6cf86c;
   --red:    #ff6666;
+  --amber:  #ffb347;
   --bg:     #000;
   --surface:#0a0a0a;
   --border: #222;
@@ -129,8 +130,35 @@ tr:hover td { background: rgba(246,238,130,.04); }
 .cs { font-weight: 700; color: var(--yellow); }
 .wp { color: #aad4ff; font-family: monospace; font-size: 11px; }
 .sid-cell { font-family: monospace; font-size: 11px; font-weight: 700; color: #fff; }
-.ok   { color: var(--green); font-weight: 700; font-size: 11px; }
-.miss { color: var(--red);   font-weight: 700; font-size: 11px; }
+.ok      { color: var(--green);  font-weight: 700; font-size: 11px; }
+.miss    { color: var(--red);    font-weight: 700; font-size: 11px; }
+.warn    { color: var(--amber);  font-weight: 700; font-size: 11px; }
+.fl-ok   { color: var(--green);  font-family: monospace; font-size: 11px; font-weight: 700; }
+.fl-warn { color: var(--amber);  font-family: monospace; font-size: 11px; font-weight: 700; }
+.fl-err  { color: var(--red);    font-family: monospace; font-size: 11px; font-weight: 700; }
+.fl-muted{ color: var(--muted);  font-family: monospace; font-size: 11px; }
+.badge {
+  display: inline-block;
+  padding: 1px 5px; border-radius: 3px;
+  font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  margin-left: 4px; vertical-align: middle;
+}
+.badge-e { background: #1a3a1a; color: var(--green); border: 1px solid #2a5a2a; }
+.badge-w { background: #1a1a3a; color: #aad4ff;      border: 1px solid #2a2a5a; }
+.tooltip-wrap { position: relative; display: inline-block; cursor: default; }
+.tooltip-wrap .tooltip {
+  visibility: hidden; opacity: 0;
+  background: #1e1e1e; color: #ddd;
+  font-size: 10px; line-height: 1.5;
+  border: 1px solid #333; border-radius: 4px;
+  padding: 6px 8px; white-space: pre-line;
+  position: absolute; z-index: 100; bottom: 125%; left: 50%;
+  transform: translateX(-50%);
+  transition: opacity .15s;
+  min-width: 180px; max-width: 260px;
+  pointer-events: none;
+}
+.tooltip-wrap:hover .tooltip { visibility: visible; opacity: 1; }
 #statusBox { font-size: 12px; color: var(--muted); margin-top: 10px; min-height: 16px; }
 #meta      { font-size: 10px; color: #444; margin-top: 4px; }
 .ticker-wrap {
@@ -157,7 +185,7 @@ tr:hover td { background: rgba(246,238,130,.04); }
   <h1>IVAO SID Matcher</h1>
 </div>
 <p class="subtitle">
-  Live IVAO departures &middot; first waypoint matched to active runway SIDs &middot; auto-refreshes every 15 s
+  Live IVAO departures &middot; first waypoint matched to active runway SIDs &middot; semicircular rule check &middot; auto-refreshes every 15 s
 </p>
 
 <div class="layout">
@@ -174,9 +202,13 @@ tr:hover td { background: rgba(246,238,130,.04); }
       <div class="hint">Toggle runways to filter SID selection.</div>
     </label>
     <button id="updateBtn">Update from IVAO</button>
-    <div class="hint" style="margin-top:10px; line-height:1.6;">
+    <div class="hint" style="margin-top:10px; line-height:1.8;">
       Token: <code style="color:#555">ivao-token-server.onrender.com/token</code><br>
-      SID DB: <code style="color:#555" id="sidDbInfo">—</code>
+      SID DB: <code style="color:#555" id="sidDbInfo">—</code><br><br>
+      <strong style="color:var(--muted)">Semicircular rule</strong><br>
+      <span style="color:var(--green)">▲ Odd FL</span> → 000°–179° (Eastbound)<br>
+      <span style="color:#aad4ff">▲ Even FL</span> → 180°–359° (Westbound)<br>
+      <span style="color:#555;font-size:10px">Bearing calculated dep→dest coords via IVAO API</span>
     </div>
   </div>
 
@@ -186,21 +218,24 @@ tr:hover td { background: rgba(246,238,130,.04); }
       <div class="stat"><div class="stat-val" id="statTotal">&mdash;</div><div class="stat-lbl">Aircraft</div></div>
       <div class="stat"><div class="stat-val" id="statMatched">&mdash;</div><div class="stat-lbl">SID matched</div></div>
       <div class="stat"><div class="stat-val" id="statUnmatched">&mdash;</div><div class="stat-lbl">No SID</div></div>
+      <div class="stat"><div class="stat-val" id="statFlErr">&mdash;</div><div class="stat-lbl">FL errors</div></div>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th style="width:90px">Callsign</th>
-            <th style="width:60px">Dep</th>
-            <th style="width:55px">Runway</th>
-            <th style="width:70px">First fix</th>
-            <th style="width:110px">Matched SID</th>
+            <th style="width:50px">Dep</th>
+            <th style="width:45px">Dest</th>
+            <th style="width:50px">Runway</th>
+            <th style="width:65px">First fix</th>
+            <th style="width:105px">Matched SID</th>
+            <th style="width:60px">FL</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody id="resultsBody">
-          <tr><td colspan="6" style="color:#555;padding:20px 8px;text-align:center">
+          <tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">
             Press <strong style="color:var(--yellow)">Update from IVAO</strong> to load live traffic.
           </td></tr>
         </tbody>
@@ -214,14 +249,40 @@ tr:hover td { background: rgba(246,238,130,.04); }
 
 <div class="ticker-wrap">
   <div class="ticker">
-    IVAO SID Matcher &nbsp;—&nbsp; Live data via IVAO Whazzup v2 &nbsp;—&nbsp; Token: ivao-token-server.onrender.com &nbsp;&nbsp;&nbsp;&nbsp;
-    IVAO SID Matcher &nbsp;—&nbsp; Live data via IVAO Whazzup v2 &nbsp;—&nbsp; Token: ivao-token-server.onrender.com
+    IVAO SID Matcher &nbsp;—&nbsp; Live data via IVAO Whazzup v2 &nbsp;—&nbsp; Semicircular rule check active &nbsp;—&nbsp; Token: ivao-token-server.onrender.com &nbsp;&nbsp;&nbsp;&nbsp;
+    IVAO SID Matcher &nbsp;—&nbsp; Live data via IVAO Whazzup v2 &nbsp;—&nbsp; Semicircular rule check active &nbsp;—&nbsp; Token: ivao-token-server.onrender.com
   </div>
 </div>
 
 <script>
+// ─── Airport coords for bearing calculation ───────────────────────────────────
+// Used as fallback if IVAO doesn't return dest coords directly
+const AIRPORT_COORDS = {
+  EGAA:[ 54.6575, -6.2158], EGAC:[ 54.6181, -5.8725], EGAE:[ 55.0427, -7.1600],
+  EGBB:[ 52.4539, -1.7480], EGBD:[ 52.8617, -1.3272], EGBE:[ 52.3697, -1.4797],
+  EGBJ:[ 51.8942, -2.1672], EGCC:[ 53.3537, -2.2750], EGCN:[ 53.4805, -1.0106],
+  EGFF:[ 51.3967, -3.3433], EGGD:[ 51.3827, -2.7191], EGGP:[ 53.3336, -2.8497],
+  EGGW:[ 51.8747, -0.3683], EGHH:[ 50.7800, -1.8425], EGHI:[ 50.9503, -1.3628],
+  EGJA:[ 49.7061, -2.2147], EGJB:[ 49.4350, -2.6017], EGJJ:[ 49.2079, -2.1953],
+  EGKB:[ 51.3308,  0.0322], EGKK:[ 51.1481, -0.1902], EGLC:[ 51.5053,  0.0553],
+  EGLF:[ 51.2775, -0.7761], EGLL:[ 51.4775, -0.4614], EGMC:[ 51.5714,  0.6956],
+  EGNM:[ 53.8659, -1.6606], EGNR:[ 53.1781, -2.9778], EGNX:[ 52.8311, -1.3281],
+  EGPD:[ 57.2019, -2.1978], EGPF:[ 55.8719, -4.4331], EGPH:[ 55.9500, -3.3725],
+  EGPK:[ 55.5094, -4.5869], EGSS:[ 51.8850,  0.2350], EGNV:[ 54.5092, -1.4294],
+  // Major European/World airports for dest bearing
+  EDDL:[ 51.2895,  6.7668], EDDF:[ 50.0264,  8.5431], EDDM:[ 48.3537, 11.7750],
+  EDDB:[ 52.3667, 13.5033], EHAM:[ 52.3086,  4.7639], EBBR:[ 50.9014,  4.4844],
+  LFPG:[ 49.0097,  2.5478], LFPO:[ 48.7233,  2.3794], LEMD:[ 40.4719, -3.5626],
+  LEBL:[ 41.2971,  2.0785], LIRF:[ 41.8003, 12.2389], LIML:[ 45.4454,  9.2764],
+  LPPT:[ 38.7813, -9.1359], LSZH:[ 47.4647,  8.5492], LOWW:[ 48.1103, 16.5697],
+  LKPR:[ 50.1008, 14.2600], EPWA:[ 52.1657, 20.9671], EKCH:[ 55.6181, 12.6561],
+  ESSA:[ 59.6519, 17.9186], ENGM:[ 60.1939, 11.1004], EFHK:[ 60.3172, 24.9633],
+  UUEE:[ 55.9736, 37.4125], LTBA:[ 40.9769, 28.8146], OMDB:[ 25.2532, 55.3657],
+  VHHH:[ 22.3080,113.9185], RJTT:[ 35.5494,139.7798], KJFK:[ 40.6413,-73.7781],
+  KLAX:[ 33.9425,-118.408], CYYZ:[ 43.6772,-79.6306], YSSY:[-33.9461,151.1772],
+};
+
 // ─── SID registry ────────────────────────────────────────────────────────────
-// Maps ICAO → { sids: [...], runways: [...unique runways] }
 const SID_REGISTRY = {
   EGBB: { name: 'Birmingham',      sids: typeof EGBB_SIDS !== 'undefined' ? EGBB_SIDS : [] },
   EGCC: { name: 'Manchester',      sids: typeof EGCC_SIDS !== 'undefined' ? EGCC_SIDS : [] },
@@ -246,12 +307,121 @@ const SID_REGISTRY = {
   EGSS: { name: 'Stansted',        sids: typeof EGSS_SIDS !== 'undefined' ? EGSS_SIDS : [] },
 };
 
-// Derive unique runway list for each airport from SID data
 Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
   const rwys = [...new Set(entry.sids.flatMap(s => s.runways))].sort();
   entry.runways = rwys;
-  console.log(`[SID Registry] ${icao} (${entry.name}): ${entry.sids.length} SIDs, runways: [${rwys.join(', ')}]`);
 });
+
+// ─── Semicircular rule ────────────────────────────────────────────────────────
+// ICAO Annex 2 / UK AIP ENR 1.7:
+//   000–179° (eastbound): odd thousands of ft  → FL010,030,050,070,090,110,130,150,170,190,210,230,250,270,290,310,330,350,370,390,410,430,450,470,490
+//   180–359° (westbound): even thousands of ft → FL020,040,060,080,100,120,140,160,180,200,220,240,260,280,300,320,340,360,380,400,420,440,460,480
+// Above FL410 RVSM tables extend but same odd/even pattern applies.
+// VFR flights (V/VFR cruising level) are exempt.
+// RVSM: below FL290 1000ft sep, FL290-FL410 1000ft, above FL410 2000ft.
+
+function bearingDeg(lat1, lon1, lat2, lon2) {
+  const toRad = d => d * Math.PI / 180;
+  const toDeg = r => r * 180 / Math.PI;
+  const dLon = toRad(lon2 - lon1);
+  const φ1 = toRad(lat1), φ2 = toRad(lat2);
+  const y = Math.sin(dLon) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLon);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+// Returns { valid: bool, fl: number|null, bearing: number|null, direction: 'E'|'W'|null,
+//           expectedParity: 'odd'|'even'|null, actualParity: 'odd'|'even'|null,
+//           rvsm: bool, status: 'ok'|'error'|'vfr'|'unknown', reason: string }
+function checkSemicircular(flightPlan, depIcao, destIcao) {
+  const cruiseAlt = flightPlan?.cruisingLevel || flightPlan?.cruisingSpeed || '';
+  const altStr = String(cruiseAlt || '').trim().toUpperCase();
+
+  // VFR / not filed
+  if (!altStr || altStr === '0') return { valid: false, fl: null, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: false, status: 'unknown', reason: 'No cruise level filed' };
+  if (altStr.startsWith('V') || altStr === 'VFR') return { valid: true, fl: null, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: false, status: 'vfr', reason: 'VFR – semicircular rule N/A' };
+
+  // Parse FL / altitude
+  let flNum = null;
+  if (altStr.startsWith('F')) {
+    flNum = parseInt(altStr.replace(/^F(L)?/, ''), 10);
+  } else if (altStr.startsWith('A')) {
+    // Altitude in hundreds of feet → convert to rough FL (no ISA correction)
+    flNum = parseInt(altStr.slice(1), 10);
+  } else {
+    // Plain number – assume feet/100 if <=999, else feet
+    const n = parseInt(altStr, 10);
+    if (!isNaN(n)) flNum = n > 999 ? Math.round(n / 100) : n;
+  }
+
+  if (flNum === null || isNaN(flNum) || flNum < 5) {
+    return { valid: false, fl: flNum, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: false, status: 'unknown', reason: `Could not parse cruise level "${altStr}"` };
+  }
+
+  // Below FL100 → don't enforce semicircular (below most controlled airspace)
+  if (flNum < 10) {
+    return { valid: true, fl: flNum, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: false, status: 'ok', reason: `FL${String(flNum).padStart(3,'0')} – below FL100, semicircular N/A` };
+  }
+
+  // Get dep/dest coords
+  const depCoords  = AIRPORT_COORDS[depIcao]  || null;
+  const destCoords = AIRPORT_COORDS[destIcao] || null;
+
+  if (!depCoords || !destCoords) {
+    const missing = [];
+    if (!depCoords)  missing.push(depIcao);
+    if (!destCoords) missing.push(destIcao);
+    return { valid: false, fl: flNum, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: flNum >= 290 && flNum <= 410, status: 'unknown', reason: `Bearing unknown – no coords for ${missing.join(', ')}` };
+  }
+
+  const bearing = bearingDeg(depCoords[0], depCoords[1], destCoords[0], destCoords[1]);
+  const direction = bearing < 180 ? 'E' : 'W';
+  const expectedParity = direction === 'E' ? 'odd' : 'even';
+  // FL parity: odd = 10, 30, 50, 70, 90, 110, 130… i.e. flNum % 2 === 1 when expressed as hundreds
+  // flNum here is in hundreds of feet (FL090 = 9, FL100 = 10, FL350 = 35)
+  const actualParity = flNum % 2 === 1 ? 'odd' : 'even';
+  const rvsm = flNum >= 290 && flNum <= 410;
+  const ok = actualParity === expectedParity;
+
+  return {
+    valid: ok,
+    fl: flNum,
+    bearing: Math.round(bearing),
+    direction,
+    expectedParity,
+    actualParity,
+    rvsm,
+    status: ok ? 'ok' : 'error',
+    reason: ok
+      ? `FL${String(flNum).padStart(3,'0')} ${direction === 'E' ? 'eastbound' : 'westbound'} (${Math.round(bearing)}°) – ${actualParity} FL ✓`
+      : `FL${String(flNum).padStart(3,'0')} ${direction === 'E' ? 'eastbound' : 'westbound'} (${Math.round(bearing)}°) – expected ${expectedParity} FL, got ${actualParity}`
+  };
+}
+
+function flCell(check) {
+  if (!check) return '<td class="fl-muted">—</td>';
+  const flStr = check.fl !== null ? `FL${String(check.fl).padStart(3,'0')}` : '—';
+  const dirBadge = check.direction
+    ? `<span class="badge badge-${check.direction.toLowerCase()}">${check.direction}</span>`
+    : '';
+  if (check.status === 'vfr')     return `<td class="fl-warn">${flStr}${dirBadge}</td>`;
+  if (check.status === 'unknown') return `<td class="fl-muted">${flStr}</td>`;
+  if (check.status === 'ok')      return `<td class="fl-ok">${flStr}${dirBadge}</td>`;
+  if (check.status === 'error')   return `<td class="fl-err">${flStr}${dirBadge}</td>`;
+  return `<td class="fl-muted">${flStr}</td>`;
+}
+
+function statusCell(sidOk, check) {
+  const sidPart = sidOk ? '<span class="ok">SID ✓</span>' : '<span class="miss">No SID</span>';
+  let flPart = '';
+  if (check) {
+    if (check.status === 'ok')      flPart = `<span class="ok" style="margin-left:6px">SCR ✓</span>`;
+    else if (check.status === 'error') flPart = `<span class="tooltip-wrap"><span class="fl-err" style="margin-left:6px">⚠ SCR</span><span class="tooltip">${check.reason}${check.rvsm ? '\n(RVSM band)' : ''}</span></span>`;
+    else if (check.status === 'vfr')   flPart = `<span class="warn" style="margin-left:6px">VFR</span>`;
+    else if (check.status === 'unknown') flPart = `<span class="fl-muted" style="margin-left:6px">SCR?</span>`;
+  }
+  return `<td>${sidPart}${flPart}</td>`;
+}
 
 // ─── Airport selector ─────────────────────────────────────────────────────────
 const airportSelect = document.getElementById('airportSelect');
@@ -273,49 +443,36 @@ function buildRunwayButtons(icao) {
   const entry = SID_REGISTRY[icao];
   if (!entry || !entry.runways.length) {
     container.innerHTML = '<span style="color:#555;font-size:11px">No runway data</span>';
-    console.log(`[Runways] No runway data for ${icao}`);
     return;
   }
   entry.runways.forEach(rwy => {
-    activeRunways.add(rwy); // default all active
+    activeRunways.add(rwy);
     const btn = document.createElement('button');
     btn.className = 'rwy-btn active';
     btn.dataset.rwy = rwy;
     btn.textContent = rwy;
     btn.addEventListener('click', () => {
-      if (activeRunways.has(rwy)) {
-        activeRunways.delete(rwy);
-        btn.classList.remove('active');
-        console.log(`[Runways] Deactivated runway ${rwy} at ${icao}. Active: [${[...activeRunways].join(', ')}]`);
-      } else {
-        activeRunways.add(rwy);
-        btn.classList.add('active');
-        console.log(`[Runways] Activated runway ${rwy} at ${icao}. Active: [${[...activeRunways].join(', ')}]`);
-      }
+      if (activeRunways.has(rwy)) { activeRunways.delete(rwy); btn.classList.remove('active'); }
+      else { activeRunways.add(rwy); btn.classList.add('active'); }
     });
     container.appendChild(btn);
   });
-  console.log(`[Runways] Built runway buttons for ${icao}: [${entry.runways.join(', ')}]`);
 }
 
 function updateSidDbInfo(icao) {
   const entry = SID_REGISTRY[icao];
   const el = document.getElementById('sidDbInfo');
-  if (entry) {
-    el.textContent = `${icao.toLowerCase()}_sids.js (${entry.sids.length} SIDs · ${entry.runways.join(' + ')})`;
-  } else {
-    el.textContent = 'No SID database loaded';
-  }
+  el.textContent = entry
+    ? `${icao.toLowerCase()}_sids.js (${entry.sids.length} SIDs · ${entry.runways.join(' + ')})`
+    : 'No SID database loaded';
 }
 
 airportSelect.addEventListener('change', () => {
   const icao = airportSelect.value;
-  console.log(`[Airport] Selected: ${icao} (${SID_REGISTRY[icao]?.name})`);
   buildRunwayButtons(icao);
   updateSidDbInfo(icao);
 });
 
-// Initialise for default airport
 buildRunwayButtons('EGKK');
 updateSidDbInfo('EGKK');
 
@@ -324,44 +481,28 @@ function norm(s) { return (s || '').toString().trim().toUpperCase(); }
 
 function firstWaypoint(route) {
   const tokens = norm(route).split(/\s+/).filter(Boolean);
-  const wp = tokens.find(t => /^[A-Z]{2,8}\d?[A-Z]?$/.test(t)) || '';
-  console.log(`[Route] Parsing route "${route}" → first waypoint: "${wp || '(none)'}"`);
-  return wp;
+  return tokens.find(t => /^[A-Z]{2,8}\d?[A-Z]?$/.test(t)) || '';
 }
 
 function matchSid(firstWp, icao, activeRwys) {
   const entry = SID_REGISTRY[icao];
-  if (!firstWp) {
-    console.log(`[SID Match] ${icao}: no first waypoint to match`);
-    return null;
-  }
-  if (!entry || !entry.sids.length) {
-    console.log(`[SID Match] ${icao}: no SID database loaded`);
-    return null;
-  }
+  if (!firstWp || !entry || !entry.sids.length) return null;
   const candidates = entry.sids.filter(s => s.waypoint === firstWp);
-  console.log(`[SID Match] ${icao} wp="${firstWp}": ${candidates.length} candidate(s):`, candidates.map(s => s.sid));
   if (!candidates.length) return null;
   const scoped = candidates.filter(s => s.runways.some(r => activeRwys.has(r)));
-  console.log(`[SID Match] ${icao} wp="${firstWp}": ${scoped.length} runway-scoped candidate(s):`, scoped.map(s => s.sid));
-  const result = scoped[0] || candidates[0] || null;
-  console.log(`[SID Match] ${icao} wp="${firstWp}" → matched SID: ${result ? result.sid : '(none)'}`);
-  return result;
+  return scoped[0] || candidates[0] || null;
 }
 
 // ─── IVAO API ─────────────────────────────────────────────────────────────────
 async function getToken() {
-  console.log('[Token] Fetching token from ivao-token-server.onrender.com…');
   const res = await fetch('https://ivao-token-server.onrender.com/token');
   if (!res.ok) throw new Error('Token server error ' + res.status);
   const data = await res.json();
   if (!data.token) throw new Error('No token in response');
-  console.log('[Token] Token received OK');
   return data.token;
 }
 
 async function fetchIvaoDepartures(airport) {
-  console.log(`[IVAO] Fetching whazzup for airport: ${airport}`);
   const token = await getToken();
   const res = await fetch('https://api.ivao.aero/v2/tracker/whazzup', {
     headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
@@ -369,19 +510,16 @@ async function fetchIvaoDepartures(airport) {
   if (!res.ok) throw new Error('IVAO API error ' + res.status);
   const data = await res.json();
   if (!data.clients?.pilots) throw new Error('Unexpected IVAO response shape');
-  const allPilots = data.clients.pilots;
-  console.log(`[IVAO] Total pilots online: ${allPilots.length}`);
-  const deps = allPilots
+  return data.clients.pilots
     .filter(p => p.flightPlan?.departureId?.toUpperCase() === airport)
     .map(p => ({
-      callsign: norm(p.callsign),
+      callsign:    norm(p.callsign),
       airport,
-      route: norm(p.flightPlan?.route || ''),
+      dest:        norm(p.flightPlan?.arrivalId || ''),
+      route:       norm(p.flightPlan?.route || ''),
+      flightPlan:  p.flightPlan,
       runway: ''
     }));
-  console.log(`[IVAO] Departures from ${airport}: ${deps.length}`);
-  if (deps.length) console.log('[IVAO] Departure callsigns:', deps.map(d => d.callsign));
-  return deps;
 }
 
 // ─── UI ───────────────────────────────────────────────────────────────────────
@@ -392,58 +530,57 @@ const metaBox       = document.getElementById('meta');
 const statTotal     = document.getElementById('statTotal');
 const statMatched   = document.getElementById('statMatched');
 const statUnmatched = document.getElementById('statUnmatched');
+const statFlErr     = document.getElementById('statFlErr');
 let lastAirport = '';
 
 async function doUpdate() {
   const airport = airportSelect.value || 'EGKK';
   lastAirport = airport;
-  console.group(`[Update] ${airport} @ ${new Date().toUTCString()}`);
-  console.log(`[Update] Active runways: [${[...activeRunways].join(', ')}]`);
   updateBtn.disabled = true;
   updateBtn.textContent = 'Loading…';
   statusBox.textContent = 'Fetching IVAO departures…';
-  resultsBody.innerHTML = '<tr><td colspan="6" style="color:#555;padding:20px 8px;text-align:center">Contacting IVAO…</td></tr>';
+  resultsBody.innerHTML = '<tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">Contacting IVAO…</td></tr>';
   try {
     const deps = await fetchIvaoDepartures(airport);
     if (!deps.length) {
-      resultsBody.innerHTML = `<tr><td colspan="6" style="color:#555;padding:20px 8px;text-align:center">No IVAO departures for ${airport}.</td></tr>`;
+      resultsBody.innerHTML = `<tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">No IVAO departures for ${airport}.</td></tr>`;
       statusBox.textContent = `No departures found for ${airport}.`;
-      statTotal.textContent = '0'; statMatched.textContent = '0'; statUnmatched.textContent = '0';
-      console.log(`[Update] No departures for ${airport}.`);
+      statTotal.textContent = '0'; statMatched.textContent = '0'; statUnmatched.textContent = '0'; statFlErr.textContent = '0';
     } else {
       const rows = deps.map(dep => {
-        const wp  = firstWaypoint(dep.route);
-        const hit = matchSid(wp, airport, activeRunways);
-        return { ...dep, firstWp: wp, sid: hit ? hit.sid : '' };
+        const wp    = firstWaypoint(dep.route);
+        const hit   = matchSid(wp, airport, activeRunways);
+        const check = checkSemicircular(dep.flightPlan, airport, dep.dest);
+        return { ...dep, firstWp: wp, sid: hit ? hit.sid : '', check };
       });
-      const matched = rows.filter(r => r.sid).length;
+      const matched  = rows.filter(r => r.sid).length;
       const unmatched = rows.length - matched;
+      const flErrors = rows.filter(r => r.check?.status === 'error').length;
       statTotal.textContent     = String(rows.length);
       statMatched.textContent   = String(matched);
       statUnmatched.textContent = String(unmatched);
-      console.log(`[Update] Results: ${rows.length} total, ${matched} matched, ${unmatched} unmatched`);
-      console.table(rows.map(r => ({ callsign: r.callsign, firstWp: r.firstWp, sid: r.sid || '—' })));
+      statFlErr.textContent     = String(flErrors);
       resultsBody.innerHTML = rows.map(r => `
         <tr>
           <td class="cs">${r.callsign}</td>
           <td>${r.airport}</td>
+          <td>${r.dest || '—'}</td>
           <td>${r.runway || '—'}</td>
           <td class="wp">${r.firstWp || '—'}</td>
           <td class="sid-cell">${r.sid || '—'}</td>
-          <td class="${r.sid ? 'ok' : 'miss'}">${r.sid ? 'SID matched' : 'No SID'}</td>
+          ${flCell(r.check)}
+          ${statusCell(!!r.sid, r.check)}
         </tr>
       `).join('');
-      statusBox.textContent = `${airport}: ${rows.length} departures · ${matched} SIDs matched · ${unmatched} unmatched.`;
+      statusBox.textContent = `${airport}: ${rows.length} departures · ${matched} SIDs matched · ${flErrors} FL error(s).`;
     }
     metaBox.textContent = 'Last update: ' + new Date().toUTCString() + ' — Active runways: ' + ([...activeRunways].join(', ') || 'none selected');
   } catch(e) {
-    console.error('[Update] Error:', e);
-    resultsBody.innerHTML = `<tr><td colspan="6" style="color:var(--red);padding:16px 8px">Error: ${e.message}</td></tr>`;
+    resultsBody.innerHTML = `<tr><td colspan="8" style="color:var(--red);padding:16px 8px">Error: ${e.message}</td></tr>`;
     statusBox.textContent = 'Error loading IVAO data.';
   } finally {
     updateBtn.disabled = false;
     updateBtn.textContent = 'Update from IVAO';
-    console.groupEnd();
   }
 }
 
