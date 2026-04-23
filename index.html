@@ -265,7 +265,6 @@ tr:hover td { background: rgba(246,238,130,.04); }
 
 <script>
 // ─── Airport coords (dep→dest bearing for semicircular rule) ─────────────────
-// Covers all 21 dep airports + broad set of common destinations
 const AIRPORT_COORDS = {
   // UK & Ireland
   EGAA:[ 54.6575, -6.2158], EGAC:[ 54.6181, -5.8725], EGAE:[ 55.0427, -7.1600],
@@ -363,71 +362,88 @@ Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
   entry.runways = rwys;
 });
 
-// ─── Semicircular rule ────────────────────────────────────────────────────────
-// ICAO Annex 2 / UK AIP ENR 1.7
-//   000–179° → odd thousands ft  (FL010, 030, 050 … 390, 410 …)
-//   180–359° → even thousands ft (FL020, 040, 060 … 380, 400 …)
-// Applied from FL060 upward. VFR exempt.
-// IVAO flightPlan.level is a raw integer:
-//   Values ≤ 999 are already in flight-level hundreds (e.g. 350 = FL350)
-//   Values ≥ 1000 are in feet (e.g. 35000 = FL350)
-
+// ─── FL parser ────────────────────────────────────────────────────────────────
+// IVAO Whazzup v2 sends flightPlan.level as a STRING, e.g.:
+//   "F380"       → FL380  (most common — F + FL digits)
+//   "FL380"      → FL380
+//   "S1130"      → metric RVSM, extract trailing digits as FL approx (ignore)
+//   "M0840F380"  → cruise mach + FL, take the F-part
+//   "VFR"        → VFR
+//   "0" / ""     → not filed
+//   bare integer → treat same as F-value if ≤999, else feet
+// Returns a flight level as an integer in hundreds of feet (FL380 → 38),
+// -1 for VFR, or null if not parseable / not filed.
 function parseFl(flightPlan) {
-  // IVAO Whazzup v2 field is flightPlan.level (integer, feet or FL*100)
   const raw = flightPlan?.level;
-  if (raw === undefined || raw === null || raw === 0) return null;
+  if (raw === undefined || raw === null) return null;
 
-  // Also check flightPlan.cruisingLevel as string fallback (some clients send "F350", "FL350", "A100")
-  const rawStr = String(flightPlan?.cruisingLevel || '').trim().toUpperCase();
+  const s = String(raw).trim().toUpperCase();
+  if (!s || s === '0') return null;
 
-  // Prefer numeric level field
-  if (typeof raw === 'number' && raw > 0) {
-    // ≥ 1000 means feet → convert to FL (divide by 100, round)
-    return raw >= 1000 ? Math.round(raw / 100) : raw;
+  // VFR
+  if (s === 'VFR' || s === 'V') return -1;
+
+  // Compound: "M0840F380" — speed+level, grab the F-part
+  const compound = s.match(/F(\d+)$/);
+  if (compound) {
+    const n = parseInt(compound[1], 10);
+    // F380 → 38 (hundreds), F38000 → feet → divide
+    return n >= 1000 ? Math.round(n / 100) : n;
   }
 
-  // Fallback: parse string cruisingLevel
-  if (rawStr) {
-    if (rawStr.startsWith('VFR') || rawStr === 'V') return -1; // VFR sentinel
-    const match = rawStr.match(/^(?:FL?)?([0-9]+)$/);
-    if (match) {
-      const n = parseInt(match[1], 10);
-      // If string was "35000" it's feet, if "350" it's FL
-      return n >= 1000 ? Math.round(n / 100) : n;
-    }
-    const altMatch = rawStr.match(/^A([0-9]+)$/);
-    if (altMatch) return parseInt(altMatch[1], 10); // A100 → 100 (hundreds of ft)
+  // "F380" or "FL380"
+  const fMatch = s.match(/^FL?(\d+)$/);
+  if (fMatch) {
+    const n = parseInt(fMatch[1], 10);
+    return n >= 1000 ? Math.round(n / 100) : n;
   }
+
+  // Altitude in hundreds of feet: "A045" → 45
+  const aMatch = s.match(/^A(\d+)$/);
+  if (aMatch) return parseInt(aMatch[1], 10);
+
+  // Metric / RVSM metric: "S1130" — metric level, skip SCR check
+  if (/^S\d+$/.test(s)) return null;
+
+  // Plain number
+  const n = parseInt(s, 10);
+  if (!isNaN(n) && n > 0) return n >= 1000 ? Math.round(n / 100) : n;
 
   return null;
 }
 
 function isVfr(flightPlan) {
   const rules = String(flightPlan?.flightRules || '').toUpperCase();
-  return rules === 'V' || rules === 'VFR';
+  if (rules === 'V' || rules === 'VFR') return true;
+  if (parseFl(flightPlan) === -1) return true;
+  return false;
 }
 
+// ─── Semicircular rule ────────────────────────────────────────────────────────
+// ICAO Annex 2 / UK AIP ENR 1.7
+//   000–179° → odd FL   (FL090, FL110 … FL390 …)
+//   180–359° → even FL  (FL100, FL120 … FL380 …)
+// Applied FL060+. VFR exempt.
 function bearingDeg(lat1, lon1, lat2, lon2) {
-  const R2D = 180 / Math.PI;
   const D2R = Math.PI / 180;
   const dLon = (lon2 - lon1) * D2R;
   const φ1 = lat1 * D2R, φ2 = lat2 * D2R;
   const y = Math.sin(dLon) * Math.cos(φ2);
   const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLon);
-  return (Math.atan2(y, x) * R2D + 360) % 360;
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
-// Returns a result object describing the SCR check
 function checkSemicircular(flightPlan, depIcao, destIcao) {
-  const vfr = isVfr(flightPlan);
-  if (vfr) return { status: 'vfr', fl: null, bearing: null, direction: null, reason: 'VFR – semicircular rule N/A' };
+  if (isVfr(flightPlan))
+    return { status: 'vfr', fl: null, bearing: null, direction: null, reason: 'VFR – semicircular rule N/A' };
 
   const fl = parseFl(flightPlan);
-  if (fl === -1) return { status: 'vfr', fl: null, bearing: null, direction: null, reason: 'VFR – semicircular rule N/A' };
-  if (fl === null) return { status: 'unknown', fl: null, bearing: null, direction: null, reason: 'No cruise level filed' };
+  if (fl === null)
+    return { status: 'unknown', fl: null, bearing: null, direction: null, reason: 'No cruise level filed' };
 
-  // Below FL060 – semicircular rule not applicable (Class G / very low level)
-  if (fl < 6) return { status: 'ok', fl, bearing: null, direction: null, reason: `FL${String(fl).padStart(3,'0')} – below FL060, rule N/A` };
+  // Below FL060 – rule not applicable
+  if (fl < 6)
+    return { status: 'ok', fl, bearing: null, direction: null, reason: `FL${String(fl).padStart(3,'0')} – below FL060, rule N/A` };
 
   const depC  = AIRPORT_COORDS[depIcao];
   const destC = AIRPORT_COORDS[destIcao];
@@ -440,31 +456,28 @@ function checkSemicircular(flightPlan, depIcao, destIcao) {
   const bearing   = bearingDeg(depC[0], depC[1], destC[0], destC[1]);
   const direction = bearing < 180 ? 'E' : 'W';
   const expParity = direction === 'E' ? 'odd' : 'even';
-  // fl is in hundreds of feet. Odd = 10,30,50,70,90,110,130,150,170,190,210,230,250,270,290,310,330,350,370,390,410…
-  // i.e. fl % 2 === 1  (FL090=9 odd ✓, FL100=10 even ✓)
+  // fl is in hundreds: FL090=9 (odd✓ east), FL100=10 (even✓ west)
   const actParity = fl % 2 === 1 ? 'odd' : 'even';
   const rvsm      = fl >= 290 && fl <= 410;
   const ok        = actParity === expParity;
   const flStr     = `FL${String(fl).padStart(3,'0')}`;
   const dirWord   = direction === 'E' ? 'Eastbound' : 'Westbound';
+  const altFl1    = fl % 2 === 0 ? fl - 1 : fl + 1;
+  const altFl2    = fl % 2 === 0 ? fl + 1 : fl - 1;
 
   return {
     status:    ok ? 'ok' : 'error',
-    fl,
-    bearing:   Math.round(bearing),
-    direction,
-    expParity,
-    actParity,
-    rvsm,
+    fl, bearing: Math.round(bearing), direction, expParity, actParity, rvsm,
     reason: ok
       ? `${flStr} ${dirWord} (${Math.round(bearing)}°) – ${actParity} FL ✓${rvsm ? ' [RVSM]' : ''}`
-      : `${flStr} ${dirWord} (${Math.round(bearing)}°)\nExpected ${expParity} FL, got ${actParity}\nCorrect would be FL${String(fl % 2 === 0 ? fl - 1 : fl + 1).padStart(3,'0')} or FL${String(fl % 2 === 0 ? fl + 1 : fl - 1).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
+      : `${flStr} ${dirWord} (${Math.round(bearing)}°)\nExpected ${expParity} FL, got ${actParity}\nNearest correct: FL${String(altFl1).padStart(3,'0')} or FL${String(altFl2).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
   };
 }
 
+// ─── Cell renderers ───────────────────────────────────────────────────────────
 function flCellHtml(check) {
   if (!check) return '<td class="fl-muted">—</td>';
-  const flStr = check.fl !== null ? `FL${String(check.fl).padStart(3,'0')}` : '—';
+  const flStr    = check.fl !== null ? `FL${String(check.fl).padStart(3,'0')}` : '—';
   const dirBadge = check.direction
     ? `<span class="badge badge-${check.direction.toLowerCase()}">${check.direction}</span>` : '';
   if (check.status === 'vfr')     return `<td class="fl-warn">${flStr}${dirBadge}</td>`;
@@ -475,10 +488,7 @@ function flCellHtml(check) {
 }
 
 function statusCellHtml(sidOk, check) {
-  const sidPart = sidOk
-    ? '<span class="ok">SID ✓</span>'
-    : '<span class="miss">No SID</span>';
-
+  const sidPart = sidOk ? '<span class="ok">SID ✓</span>' : '<span class="miss">No SID</span>';
   let flPart = '';
   if (check) {
     if (check.status === 'ok')
@@ -503,7 +513,7 @@ Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
   airportSelect.appendChild(opt);
 });
 
-// ─── Active runways state ─────────────────────────────────────────────────────
+// ─── Active runways ───────────────────────────────────────────────────────────
 let activeRunways = new Set();
 
 function buildRunwayButtons(icao) {
