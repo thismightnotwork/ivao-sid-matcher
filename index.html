@@ -112,7 +112,7 @@ select option { background: #111; }
 }
 .stat-val { font-size: 20px; font-weight: 700; color: var(--yellow); line-height: 1; }
 .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: .06em; }
-.table-wrap { overflow-x: auto; border-radius: 5px; border: 1px solid var(--border); }
+.table-wrap { overflow-x: auto; border-radius: 5px; border: 1px solid var(--border); overflow: visible; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
 th {
   background: #111; color: var(--muted);
@@ -122,7 +122,8 @@ th {
 }
 td {
   padding: 6px 8px; border-bottom: 1px solid #141414;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: visible; text-overflow: ellipsis;
+  position: relative;
 }
 tr:last-child td { border-bottom: none; }
 tr:nth-child(even) td { background: #050505; }
@@ -145,20 +146,28 @@ tr:hover td { background: rgba(246,238,130,.04); }
 }
 .badge-e { background: #1a3a1a; color: var(--green); border: 1px solid #2a5a2a; }
 .badge-w { background: #1a1a3a; color: #aad4ff;      border: 1px solid #2a2a5a; }
-.tooltip-wrap { position: relative; display: inline-block; cursor: default; }
-.tooltip-wrap .tooltip {
-  visibility: hidden; opacity: 0;
-  background: #1e1e1e; color: #ddd;
-  font-size: 10px; line-height: 1.5;
-  border: 1px solid #333; border-radius: 4px;
-  padding: 6px 8px; white-space: pre-line;
-  position: absolute; z-index: 100; bottom: 125%; left: 50%;
-  transform: translateX(-50%);
-  transition: opacity .15s;
-  min-width: 180px; max-width: 260px;
+/* Tooltip */
+.has-tip { position: relative; cursor: default; }
+.has-tip .tip {
+  display: none;
+  position: absolute;
+  z-index: 200;
+  bottom: calc(100% + 4px);
+  left: 0;
+  background: #1e1e1e;
+  color: #ddd;
+  font-size: 10px;
+  line-height: 1.6;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 6px 9px;
+  white-space: pre-line;
+  min-width: 200px;
+  max-width: 300px;
   pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,.6);
 }
-.tooltip-wrap:hover .tooltip { visibility: visible; opacity: 1; }
+.has-tip:hover .tip { display: block; }
 #statusBox { font-size: 12px; color: var(--muted); margin-top: 10px; min-height: 16px; }
 #meta      { font-size: 10px; color: #444; margin-top: 4px; }
 .ticker-wrap {
@@ -181,7 +190,7 @@ tr:hover td { background: rgba(246,238,130,.04); }
 <body>
 
 <div class="topbar">
-  <div class="logo">✈</div>
+  <div class="logo">&#9992;</div>
   <h1>IVAO SID Matcher</h1>
 </div>
 <p class="subtitle">
@@ -204,11 +213,11 @@ tr:hover td { background: rgba(246,238,130,.04); }
     <button id="updateBtn">Update from IVAO</button>
     <div class="hint" style="margin-top:10px; line-height:1.8;">
       Token: <code style="color:#555">ivao-token-server.onrender.com/token</code><br>
-      SID DB: <code style="color:#555" id="sidDbInfo">—</code><br><br>
-      <strong style="color:var(--muted)">Semicircular rule</strong><br>
-      <span style="color:var(--green)">▲ Odd FL</span> → 000°–179° (Eastbound)<br>
-      <span style="color:#aad4ff">▲ Even FL</span> → 180°–359° (Westbound)<br>
-      <span style="color:#555;font-size:10px">Bearing calculated dep→dest coords via IVAO API</span>
+      SID DB: <code style="color:#555" id="sidDbInfo">&mdash;</code><br><br>
+      <strong style="color:var(--muted)">Semicircular rule (ICAO Annex 2)</strong><br>
+      <span style="color:var(--green)">Odd FL</span> &rarr; 000&deg;&ndash;179&deg; (Eastbound)<br>
+      <span style="color:#aad4ff">Even FL</span> &rarr; 180&deg;&ndash;359&deg; (Westbound)<br>
+      <span style="color:#555;font-size:10px">Applied FL060+. Bearing dep&rarr;dest great-circle.</span>
     </div>
   </div>
 
@@ -226,11 +235,11 @@ tr:hover td { background: rgba(246,238,130,.04); }
           <tr>
             <th style="width:90px">Callsign</th>
             <th style="width:50px">Dep</th>
-            <th style="width:45px">Dest</th>
+            <th style="width:50px">Dest</th>
             <th style="width:50px">Runway</th>
             <th style="width:65px">First fix</th>
             <th style="width:105px">Matched SID</th>
-            <th style="width:60px">FL</th>
+            <th style="width:70px">FL</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -249,40 +258,82 @@ tr:hover td { background: rgba(246,238,130,.04); }
 
 <div class="ticker-wrap">
   <div class="ticker">
-    IVAO SID Matcher &nbsp;—&nbsp; Live data via IVAO Whazzup v2 &nbsp;—&nbsp; Semicircular rule check active &nbsp;—&nbsp; Token: ivao-token-server.onrender.com &nbsp;&nbsp;&nbsp;&nbsp;
-    IVAO SID Matcher &nbsp;—&nbsp; Live data via IVAO Whazzup v2 &nbsp;—&nbsp; Semicircular rule check active &nbsp;—&nbsp; Token: ivao-token-server.onrender.com
+    IVAO SID Matcher &nbsp;&mdash;&nbsp; Live data via IVAO Whazzup v2 &nbsp;&mdash;&nbsp; Semicircular rule check active &nbsp;&mdash;&nbsp; Token: ivao-token-server.onrender.com &nbsp;&nbsp;&nbsp;&nbsp;
+    IVAO SID Matcher &nbsp;&mdash;&nbsp; Live data via IVAO Whazzup v2 &nbsp;&mdash;&nbsp; Semicircular rule check active &nbsp;&mdash;&nbsp; Token: ivao-token-server.onrender.com
   </div>
 </div>
 
 <script>
-// ─── Airport coords for bearing calculation ───────────────────────────────────
-// Used as fallback if IVAO doesn't return dest coords directly
+// ─── Airport coords (dep→dest bearing for semicircular rule) ─────────────────
+// Covers all 21 dep airports + broad set of common destinations
 const AIRPORT_COORDS = {
+  // UK & Ireland
   EGAA:[ 54.6575, -6.2158], EGAC:[ 54.6181, -5.8725], EGAE:[ 55.0427, -7.1600],
   EGBB:[ 52.4539, -1.7480], EGBD:[ 52.8617, -1.3272], EGBE:[ 52.3697, -1.4797],
-  EGBJ:[ 51.8942, -2.1672], EGCC:[ 53.3537, -2.2750], EGCN:[ 53.4805, -1.0106],
-  EGFF:[ 51.3967, -3.3433], EGGD:[ 51.3827, -2.7191], EGGP:[ 53.3336, -2.8497],
-  EGGW:[ 51.8747, -0.3683], EGHH:[ 50.7800, -1.8425], EGHI:[ 50.9503, -1.3628],
-  EGJA:[ 49.7061, -2.2147], EGJB:[ 49.4350, -2.6017], EGJJ:[ 49.2079, -2.1953],
-  EGKB:[ 51.3308,  0.0322], EGKK:[ 51.1481, -0.1902], EGLC:[ 51.5053,  0.0553],
-  EGLF:[ 51.2775, -0.7761], EGLL:[ 51.4775, -0.4614], EGMC:[ 51.5714,  0.6956],
-  EGNM:[ 53.8659, -1.6606], EGNR:[ 53.1781, -2.9778], EGNX:[ 52.8311, -1.3281],
-  EGPD:[ 57.2019, -2.1978], EGPF:[ 55.8719, -4.4331], EGPH:[ 55.9500, -3.3725],
-  EGPK:[ 55.5094, -4.5869], EGSS:[ 51.8850,  0.2350], EGNV:[ 54.5092, -1.4294],
-  // Major European/World airports for dest bearing
+  EGBJ:[ 51.8942, -2.1672], EGBP:[ 51.6681, -2.0564], EGCC:[ 53.3537, -2.2750],
+  EGCN:[ 53.4805, -1.0106], EGFF:[ 51.3967, -3.3433], EGGD:[ 51.3827, -2.7191],
+  EGGP:[ 53.3336, -2.8497], EGGW:[ 51.8747, -0.3683], EGHH:[ 50.7800, -1.8425],
+  EGHI:[ 50.9503, -1.3628], EGJA:[ 49.7061, -2.2147], EGJB:[ 49.4350, -2.6017],
+  EGJJ:[ 49.2079, -2.1953], EGKB:[ 51.3308,  0.0322], EGKK:[ 51.1481, -0.1902],
+  EGLC:[ 51.5053,  0.0553], EGLF:[ 51.2775, -0.7761], EGLL:[ 51.4775, -0.4614],
+  EGMC:[ 51.5714,  0.6956], EGNM:[ 53.8659, -1.6606], EGNR:[ 53.1781, -2.9778],
+  EGNX:[ 52.8311, -1.3281], EGPD:[ 57.2019, -2.1978], EGPF:[ 55.8719, -4.4331],
+  EGPH:[ 55.9500, -3.3725], EGPK:[ 55.5094, -4.5869], EGPN:[ 56.4525, -3.0114],
+  EGSS:[ 51.8850,  0.2350], EGNV:[ 54.5092, -1.4294], EGNT:[ 54.9258, -1.6917],
+  EGSH:[ 52.6758,  1.2828], EGSX:[ 51.7006,  0.1572], EGTE:[ 50.7344, -3.4139],
+  EGCK:[ 52.0900, -4.3342], EGEW:[ 58.4581, -3.0933],
+  EIDW:[ 53.4213, -6.2700], EICK:[ 51.8413, -8.4911], EIDL:[ 55.0442, -8.3411],
+  EINN:[ 52.7022, -8.9253], EIWF:[ 52.1872, -7.0958], EISG:[ 54.2803, -8.5992],
+  EIKY:[ 52.1811, -9.5236], EIIM:[ 53.0967, -9.9278],
+  // Benelux
+  EHAM:[ 52.3086,  4.7639], EHRD:[ 51.9569,  4.4372], EBBR:[ 50.9014,  4.4844],
+  EBCI:[ 50.4722,  4.4528], ELLX:[ 49.6233,  6.2044],
+  // France
+  LFPG:[ 49.0097,  2.5478], LFPO:[ 48.7233,  2.3794], LFPB:[ 48.9694,  2.4411],
+  LFMN:[ 43.6653,  7.2150], LFLL:[ 45.7256,  5.0811], LFLY:[ 45.7272,  4.9442],
+  LFRS:[ 47.1533, -1.6108], LFBD:[ 44.8283, -0.7153], LFBO:[ 43.6293,  1.3678],
+  LFBZ:[ 43.4686, -1.5231], LFRN:[ 48.0697, -1.7317], LFRB:[ 48.4478, -4.4181],
+  // Iberia
+  LEMD:[ 40.4719, -3.5626], LEBL:[ 41.2971,  2.0785], LEPA:[ 39.5517,  2.7388],
+  LEMG:[ 36.6749, -4.4991], LEAL:[ 38.2822, -0.5581], LEVC:[ 39.4893, -0.4816],
+  LPPT:[ 38.7813, -9.1359], LPPR:[ 41.2481, -8.6814], LPFR:[ 37.0144, -7.9659],
+  // Germany / Austria / Switzerland
   EDDL:[ 51.2895,  6.7668], EDDF:[ 50.0264,  8.5431], EDDM:[ 48.3537, 11.7750],
-  EDDB:[ 52.3667, 13.5033], EHAM:[ 52.3086,  4.7639], EBBR:[ 50.9014,  4.4844],
-  LFPG:[ 49.0097,  2.5478], LFPO:[ 48.7233,  2.3794], LEMD:[ 40.4719, -3.5626],
-  LEBL:[ 41.2971,  2.0785], LIRF:[ 41.8003, 12.2389], LIML:[ 45.4454,  9.2764],
-  LPPT:[ 38.7813, -9.1359], LSZH:[ 47.4647,  8.5492], LOWW:[ 48.1103, 16.5697],
-  LKPR:[ 50.1008, 14.2600], EPWA:[ 52.1657, 20.9671], EKCH:[ 55.6181, 12.6561],
-  ESSA:[ 59.6519, 17.9186], ENGM:[ 60.1939, 11.1004], EFHK:[ 60.3172, 24.9633],
-  UUEE:[ 55.9736, 37.4125], LTBA:[ 40.9769, 28.8146], OMDB:[ 25.2532, 55.3657],
-  VHHH:[ 22.3080,113.9185], RJTT:[ 35.5494,139.7798], KJFK:[ 40.6413,-73.7781],
-  KLAX:[ 33.9425,-118.408], CYYZ:[ 43.6772,-79.6306], YSSY:[-33.9461,151.1772],
+  EDDB:[ 52.3667, 13.5033], EDDH:[ 53.6303,  9.9882], EDDS:[ 48.6900,  9.2217],
+  EDDK:[ 50.8659,  7.1428], EDDP:[ 51.4239, 12.2364], EDDN:[ 49.4987, 11.0669],
+  LSZH:[ 47.4647,  8.5492], LSGG:[ 46.2381,  6.1089], LOWW:[ 48.1103, 16.5697],
+  LOWI:[ 47.2603, 11.3436],
+  // Italy / Malta
+  LIRF:[ 41.8003, 12.2389], LIML:[ 45.4454,  9.2764], LIPZ:[ 45.5053, 12.3519],
+  LIRN:[ 40.8864, 14.2908], LICJ:[ 38.1759, 13.0914], LMML:[ 35.8572, 14.4775],
+  // Scandinavia
+  EKCH:[ 55.6181, 12.6561], EKBI:[ 55.7403,  8.5539], ESSA:[ 59.6519, 17.9186],
+  ESGG:[ 57.6628, 12.2797], ESMX:[ 56.9261, 14.7281], ENGM:[ 60.1939, 11.1004],
+  ENBR:[ 60.2934,  5.2181], ENVA:[ 63.4578, 10.9258], EFHK:[ 60.3172, 24.9633],
+  EFTU:[ 60.5147, 22.2628],
+  // Eastern Europe
+  LKPR:[ 50.1008, 14.2600], EPWA:[ 52.1657, 20.9671], EPKK:[ 50.0777, 19.7847],
+  LHBP:[ 47.4369, 19.2556], LROP:[ 44.5722, 26.1022], UKBB:[ 50.3450, 30.8947],
+  UUEE:[ 55.9736, 37.4125], UUDD:[ 55.4083, 37.9064], EVRA:[ 56.9236, 23.9711],
+  EYVI:[ 54.6339, 25.2858], EETU:[ 59.4133, 24.8328],
+  // Greece / Cyprus / Turkey
+  LGAV:[ 37.9364, 23.9445], LGTS:[ 40.5197, 22.9709], LCPH:[ 34.7178, 32.4856],
+  LTBA:[ 40.9769, 28.8146], LTFM:[ 41.2753, 28.7519], LTAI:[ 36.8987, 30.8006],
+  // Middle East / Asia
+  OMDB:[ 25.2532, 55.3657], OMAA:[ 24.4330, 54.6511], OERK:[ 24.9578, 46.6988],
+  OTHH:[ 25.2731, 51.6081], OKBK:[ 29.2267, 47.9689],
+  VHHH:[ 22.3080,113.9185], RJTT:[ 35.5494,139.7798], WSSS:[ 1.3644,103.9915],
+  VIDP:[ 28.5565, 77.1000], VABB:[ 19.0887, 72.8679],
+  // North America
+  KJFK:[ 40.6413,-73.7781], KLAX:[ 33.9425,-118.408], KORD:[ 41.9742,-87.9073],
+  KMIA:[ 25.7953,-80.2870], KEWR:[ 40.6895,-74.1745], KBOS:[ 42.3656,-71.0096],
+  CYYZ:[ 43.6772,-79.6306], CYVR:[ 49.1947,-123.184], CYUL:[ 45.4706,-73.7408],
+  // Rest of world
+  YSSY:[-33.9461,151.1772], YMML:[-37.6690,144.841], NZAA:[-37.0082,174.792],
+  FAOR:[-26.1392, 28.2460], GMMN:[ 33.3675, -7.5900],
 };
 
-// ─── SID registry ────────────────────────────────────────────────────────────
+// ─── SID registry ─────────────────────────────────────────────────────────────
 const SID_REGISTRY = {
   EGBB: { name: 'Birmingham',      sids: typeof EGBB_SIDS !== 'undefined' ? EGBB_SIDS : [] },
   EGCC: { name: 'Manchester',      sids: typeof EGCC_SIDS !== 'undefined' ? EGCC_SIDS : [] },
@@ -313,112 +364,131 @@ Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
 });
 
 // ─── Semicircular rule ────────────────────────────────────────────────────────
-// ICAO Annex 2 / UK AIP ENR 1.7:
-//   000–179° (eastbound): odd thousands of ft  → FL010,030,050,070,090,110,130,150,170,190,210,230,250,270,290,310,330,350,370,390,410,430,450,470,490
-//   180–359° (westbound): even thousands of ft → FL020,040,060,080,100,120,140,160,180,200,220,240,260,280,300,320,340,360,380,400,420,440,460,480
-// Above FL410 RVSM tables extend but same odd/even pattern applies.
-// VFR flights (V/VFR cruising level) are exempt.
-// RVSM: below FL290 1000ft sep, FL290-FL410 1000ft, above FL410 2000ft.
+// ICAO Annex 2 / UK AIP ENR 1.7
+//   000–179° → odd thousands ft  (FL010, 030, 050 … 390, 410 …)
+//   180–359° → even thousands ft (FL020, 040, 060 … 380, 400 …)
+// Applied from FL060 upward. VFR exempt.
+// IVAO flightPlan.level is a raw integer:
+//   Values ≤ 999 are already in flight-level hundreds (e.g. 350 = FL350)
+//   Values ≥ 1000 are in feet (e.g. 35000 = FL350)
 
-function bearingDeg(lat1, lon1, lat2, lon2) {
-  const toRad = d => d * Math.PI / 180;
-  const toDeg = r => r * 180 / Math.PI;
-  const dLon = toRad(lon2 - lon1);
-  const φ1 = toRad(lat1), φ2 = toRad(lat2);
-  const y = Math.sin(dLon) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLon);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+function parseFl(flightPlan) {
+  // IVAO Whazzup v2 field is flightPlan.level (integer, feet or FL*100)
+  const raw = flightPlan?.level;
+  if (raw === undefined || raw === null || raw === 0) return null;
+
+  // Also check flightPlan.cruisingLevel as string fallback (some clients send "F350", "FL350", "A100")
+  const rawStr = String(flightPlan?.cruisingLevel || '').trim().toUpperCase();
+
+  // Prefer numeric level field
+  if (typeof raw === 'number' && raw > 0) {
+    // ≥ 1000 means feet → convert to FL (divide by 100, round)
+    return raw >= 1000 ? Math.round(raw / 100) : raw;
+  }
+
+  // Fallback: parse string cruisingLevel
+  if (rawStr) {
+    if (rawStr.startsWith('VFR') || rawStr === 'V') return -1; // VFR sentinel
+    const match = rawStr.match(/^(?:FL?)?([0-9]+)$/);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      // If string was "35000" it's feet, if "350" it's FL
+      return n >= 1000 ? Math.round(n / 100) : n;
+    }
+    const altMatch = rawStr.match(/^A([0-9]+)$/);
+    if (altMatch) return parseInt(altMatch[1], 10); // A100 → 100 (hundreds of ft)
+  }
+
+  return null;
 }
 
-// Returns { valid: bool, fl: number|null, bearing: number|null, direction: 'E'|'W'|null,
-//           expectedParity: 'odd'|'even'|null, actualParity: 'odd'|'even'|null,
-//           rvsm: bool, status: 'ok'|'error'|'vfr'|'unknown', reason: string }
+function isVfr(flightPlan) {
+  const rules = String(flightPlan?.flightRules || '').toUpperCase();
+  return rules === 'V' || rules === 'VFR';
+}
+
+function bearingDeg(lat1, lon1, lat2, lon2) {
+  const R2D = 180 / Math.PI;
+  const D2R = Math.PI / 180;
+  const dLon = (lon2 - lon1) * D2R;
+  const φ1 = lat1 * D2R, φ2 = lat2 * D2R;
+  const y = Math.sin(dLon) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLon);
+  return (Math.atan2(y, x) * R2D + 360) % 360;
+}
+
+// Returns a result object describing the SCR check
 function checkSemicircular(flightPlan, depIcao, destIcao) {
-  const cruiseAlt = flightPlan?.cruisingLevel || flightPlan?.cruisingSpeed || '';
-  const altStr = String(cruiseAlt || '').trim().toUpperCase();
+  const vfr = isVfr(flightPlan);
+  if (vfr) return { status: 'vfr', fl: null, bearing: null, direction: null, reason: 'VFR – semicircular rule N/A' };
 
-  // VFR / not filed
-  if (!altStr || altStr === '0') return { valid: false, fl: null, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: false, status: 'unknown', reason: 'No cruise level filed' };
-  if (altStr.startsWith('V') || altStr === 'VFR') return { valid: true, fl: null, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: false, status: 'vfr', reason: 'VFR – semicircular rule N/A' };
+  const fl = parseFl(flightPlan);
+  if (fl === -1) return { status: 'vfr', fl: null, bearing: null, direction: null, reason: 'VFR – semicircular rule N/A' };
+  if (fl === null) return { status: 'unknown', fl: null, bearing: null, direction: null, reason: 'No cruise level filed' };
 
-  // Parse FL / altitude
-  let flNum = null;
-  if (altStr.startsWith('F')) {
-    flNum = parseInt(altStr.replace(/^F(L)?/, ''), 10);
-  } else if (altStr.startsWith('A')) {
-    // Altitude in hundreds of feet → convert to rough FL (no ISA correction)
-    flNum = parseInt(altStr.slice(1), 10);
-  } else {
-    // Plain number – assume feet/100 if <=999, else feet
-    const n = parseInt(altStr, 10);
-    if (!isNaN(n)) flNum = n > 999 ? Math.round(n / 100) : n;
+  // Below FL060 – semicircular rule not applicable (Class G / very low level)
+  if (fl < 6) return { status: 'ok', fl, bearing: null, direction: null, reason: `FL${String(fl).padStart(3,'0')} – below FL060, rule N/A` };
+
+  const depC  = AIRPORT_COORDS[depIcao];
+  const destC = AIRPORT_COORDS[destIcao];
+
+  if (!depC || !destC) {
+    const missing = [!depC && depIcao, !destC && destIcao].filter(Boolean).join(', ');
+    return { status: 'unknown', fl, bearing: null, direction: null, reason: `Bearing unknown – no coords for ${missing}` };
   }
 
-  if (flNum === null || isNaN(flNum) || flNum < 5) {
-    return { valid: false, fl: flNum, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: false, status: 'unknown', reason: `Could not parse cruise level "${altStr}"` };
-  }
-
-  // Below FL100 → don't enforce semicircular (below most controlled airspace)
-  if (flNum < 10) {
-    return { valid: true, fl: flNum, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: false, status: 'ok', reason: `FL${String(flNum).padStart(3,'0')} – below FL100, semicircular N/A` };
-  }
-
-  // Get dep/dest coords
-  const depCoords  = AIRPORT_COORDS[depIcao]  || null;
-  const destCoords = AIRPORT_COORDS[destIcao] || null;
-
-  if (!depCoords || !destCoords) {
-    const missing = [];
-    if (!depCoords)  missing.push(depIcao);
-    if (!destCoords) missing.push(destIcao);
-    return { valid: false, fl: flNum, bearing: null, direction: null, expectedParity: null, actualParity: null, rvsm: flNum >= 290 && flNum <= 410, status: 'unknown', reason: `Bearing unknown – no coords for ${missing.join(', ')}` };
-  }
-
-  const bearing = bearingDeg(depCoords[0], depCoords[1], destCoords[0], destCoords[1]);
+  const bearing   = bearingDeg(depC[0], depC[1], destC[0], destC[1]);
   const direction = bearing < 180 ? 'E' : 'W';
-  const expectedParity = direction === 'E' ? 'odd' : 'even';
-  // FL parity: odd = 10, 30, 50, 70, 90, 110, 130… i.e. flNum % 2 === 1 when expressed as hundreds
-  // flNum here is in hundreds of feet (FL090 = 9, FL100 = 10, FL350 = 35)
-  const actualParity = flNum % 2 === 1 ? 'odd' : 'even';
-  const rvsm = flNum >= 290 && flNum <= 410;
-  const ok = actualParity === expectedParity;
+  const expParity = direction === 'E' ? 'odd' : 'even';
+  // fl is in hundreds of feet. Odd = 10,30,50,70,90,110,130,150,170,190,210,230,250,270,290,310,330,350,370,390,410…
+  // i.e. fl % 2 === 1  (FL090=9 odd ✓, FL100=10 even ✓)
+  const actParity = fl % 2 === 1 ? 'odd' : 'even';
+  const rvsm      = fl >= 290 && fl <= 410;
+  const ok        = actParity === expParity;
+  const flStr     = `FL${String(fl).padStart(3,'0')}`;
+  const dirWord   = direction === 'E' ? 'Eastbound' : 'Westbound';
 
   return {
-    valid: ok,
-    fl: flNum,
-    bearing: Math.round(bearing),
+    status:    ok ? 'ok' : 'error',
+    fl,
+    bearing:   Math.round(bearing),
     direction,
-    expectedParity,
-    actualParity,
+    expParity,
+    actParity,
     rvsm,
-    status: ok ? 'ok' : 'error',
     reason: ok
-      ? `FL${String(flNum).padStart(3,'0')} ${direction === 'E' ? 'eastbound' : 'westbound'} (${Math.round(bearing)}°) – ${actualParity} FL ✓`
-      : `FL${String(flNum).padStart(3,'0')} ${direction === 'E' ? 'eastbound' : 'westbound'} (${Math.round(bearing)}°) – expected ${expectedParity} FL, got ${actualParity}`
+      ? `${flStr} ${dirWord} (${Math.round(bearing)}°) – ${actParity} FL ✓${rvsm ? ' [RVSM]' : ''}`
+      : `${flStr} ${dirWord} (${Math.round(bearing)}°)\nExpected ${expParity} FL, got ${actParity}\nCorrect would be FL${String(fl % 2 === 0 ? fl - 1 : fl + 1).padStart(3,'0')} or FL${String(fl % 2 === 0 ? fl + 1 : fl - 1).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
   };
 }
 
-function flCell(check) {
+function flCellHtml(check) {
   if (!check) return '<td class="fl-muted">—</td>';
   const flStr = check.fl !== null ? `FL${String(check.fl).padStart(3,'0')}` : '—';
   const dirBadge = check.direction
-    ? `<span class="badge badge-${check.direction.toLowerCase()}">${check.direction}</span>`
-    : '';
+    ? `<span class="badge badge-${check.direction.toLowerCase()}">${check.direction}</span>` : '';
   if (check.status === 'vfr')     return `<td class="fl-warn">${flStr}${dirBadge}</td>`;
-  if (check.status === 'unknown') return `<td class="fl-muted">${flStr}</td>`;
+  if (check.status === 'unknown') return `<td class="fl-muted">${flStr}${dirBadge}</td>`;
   if (check.status === 'ok')      return `<td class="fl-ok">${flStr}${dirBadge}</td>`;
   if (check.status === 'error')   return `<td class="fl-err">${flStr}${dirBadge}</td>`;
   return `<td class="fl-muted">${flStr}</td>`;
 }
 
-function statusCell(sidOk, check) {
-  const sidPart = sidOk ? '<span class="ok">SID ✓</span>' : '<span class="miss">No SID</span>';
+function statusCellHtml(sidOk, check) {
+  const sidPart = sidOk
+    ? '<span class="ok">SID ✓</span>'
+    : '<span class="miss">No SID</span>';
+
   let flPart = '';
   if (check) {
-    if (check.status === 'ok')      flPart = `<span class="ok" style="margin-left:6px">SCR ✓</span>`;
-    else if (check.status === 'error') flPart = `<span class="tooltip-wrap"><span class="fl-err" style="margin-left:6px">⚠ SCR</span><span class="tooltip">${check.reason}${check.rvsm ? '\n(RVSM band)' : ''}</span></span>`;
-    else if (check.status === 'vfr')   flPart = `<span class="warn" style="margin-left:6px">VFR</span>`;
-    else if (check.status === 'unknown') flPart = `<span class="fl-muted" style="margin-left:6px">SCR?</span>`;
+    if (check.status === 'ok')
+      flPart = '<span class="ok" style="margin-left:6px">SCR ✓</span>';
+    else if (check.status === 'error')
+      flPart = `<span class="has-tip fl-err" style="margin-left:6px">⚠ SCR<span class="tip">${check.reason.replace(/</g,'&lt;')}</span></span>`;
+    else if (check.status === 'vfr')
+      flPart = '<span class="warn" style="margin-left:6px">VFR</span>';
+    else if (check.status === 'unknown')
+      flPart = `<span class="has-tip fl-muted" style="margin-left:6px">SCR?<span class="tip">${check.reason.replace(/</g,'&lt;')}</span></span>`;
   }
   return `<td>${sidPart}${flPart}</td>`;
 }
@@ -461,36 +531,34 @@ function buildRunwayButtons(icao) {
 
 function updateSidDbInfo(icao) {
   const entry = SID_REGISTRY[icao];
-  const el = document.getElementById('sidDbInfo');
-  el.textContent = entry
+  document.getElementById('sidDbInfo').textContent = entry
     ? `${icao.toLowerCase()}_sids.js (${entry.sids.length} SIDs · ${entry.runways.join(' + ')})`
     : 'No SID database loaded';
 }
 
 airportSelect.addEventListener('change', () => {
-  const icao = airportSelect.value;
-  buildRunwayButtons(icao);
-  updateSidDbInfo(icao);
+  buildRunwayButtons(airportSelect.value);
+  updateSidDbInfo(airportSelect.value);
 });
 
 buildRunwayButtons('EGKK');
 updateSidDbInfo('EGKK');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function norm(s) { return (s || '').toString().trim().toUpperCase(); }
+const norm = s => (s || '').toString().trim().toUpperCase();
 
 function firstWaypoint(route) {
   const tokens = norm(route).split(/\s+/).filter(Boolean);
-  return tokens.find(t => /^[A-Z]{2,8}\d?[A-Z]?$/.test(t)) || '';
+  return tokens.find(t => /^[A-Z]{2,5}\d?[A-Z]?$/.test(t)) || '';
 }
 
 function matchSid(firstWp, icao, activeRwys) {
   const entry = SID_REGISTRY[icao];
-  if (!firstWp || !entry || !entry.sids.length) return null;
+  if (!firstWp || !entry?.sids.length) return null;
   const candidates = entry.sids.filter(s => s.waypoint === firstWp);
   if (!candidates.length) return null;
   const scoped = candidates.filter(s => s.runways.some(r => activeRwys.has(r)));
-  return scoped[0] || candidates[0] || null;
+  return scoped[0] || candidates[0];
 }
 
 // ─── IVAO API ─────────────────────────────────────────────────────────────────
@@ -505,20 +573,19 @@ async function getToken() {
 async function fetchIvaoDepartures(airport) {
   const token = await getToken();
   const res = await fetch('https://api.ivao.aero/v2/tracker/whazzup', {
-    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }
   });
   if (!res.ok) throw new Error('IVAO API error ' + res.status);
   const data = await res.json();
   if (!data.clients?.pilots) throw new Error('Unexpected IVAO response shape');
   return data.clients.pilots
-    .filter(p => p.flightPlan?.departureId?.toUpperCase() === airport)
+    .filter(p => norm(p.flightPlan?.departureId) === airport)
     .map(p => ({
-      callsign:    norm(p.callsign),
+      callsign:   norm(p.callsign),
       airport,
-      dest:        norm(p.flightPlan?.arrivalId || ''),
-      route:       norm(p.flightPlan?.route || ''),
-      flightPlan:  p.flightPlan,
-      runway: ''
+      dest:       norm(p.flightPlan?.arrivalId || ''),
+      route:      norm(p.flightPlan?.route || ''),
+      flightPlan: p.flightPlan || {},
     }));
 }
 
@@ -540,44 +607,53 @@ async function doUpdate() {
   updateBtn.textContent = 'Loading…';
   statusBox.textContent = 'Fetching IVAO departures…';
   resultsBody.innerHTML = '<tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">Contacting IVAO…</td></tr>';
+
   try {
     const deps = await fetchIvaoDepartures(airport);
+
     if (!deps.length) {
-      resultsBody.innerHTML = `<tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">No IVAO departures for ${airport}.</td></tr>`;
+      resultsBody.innerHTML = `<tr><td colspan="8" style="color:#555;padding:20px 8px;text-align:center">No IVAO departures found for ${airport}.</td></tr>`;
       statusBox.textContent = `No departures found for ${airport}.`;
-      statTotal.textContent = '0'; statMatched.textContent = '0'; statUnmatched.textContent = '0'; statFlErr.textContent = '0';
-    } else {
-      const rows = deps.map(dep => {
-        const wp    = firstWaypoint(dep.route);
-        const hit   = matchSid(wp, airport, activeRunways);
-        const check = checkSemicircular(dep.flightPlan, airport, dep.dest);
-        return { ...dep, firstWp: wp, sid: hit ? hit.sid : '', check };
-      });
-      const matched  = rows.filter(r => r.sid).length;
-      const unmatched = rows.length - matched;
-      const flErrors = rows.filter(r => r.check?.status === 'error').length;
-      statTotal.textContent     = String(rows.length);
-      statMatched.textContent   = String(matched);
-      statUnmatched.textContent = String(unmatched);
-      statFlErr.textContent     = String(flErrors);
-      resultsBody.innerHTML = rows.map(r => `
-        <tr>
-          <td class="cs">${r.callsign}</td>
-          <td>${r.airport}</td>
-          <td>${r.dest || '—'}</td>
-          <td>${r.runway || '—'}</td>
-          <td class="wp">${r.firstWp || '—'}</td>
-          <td class="sid-cell">${r.sid || '—'}</td>
-          ${flCell(r.check)}
-          ${statusCell(!!r.sid, r.check)}
-        </tr>
-      `).join('');
-      statusBox.textContent = `${airport}: ${rows.length} departures · ${matched} SIDs matched · ${flErrors} FL error(s).`;
+      ['statTotal','statMatched','statUnmatched','statFlErr'].forEach(id => document.getElementById(id).textContent = '0');
+      return;
     }
-    metaBox.textContent = 'Last update: ' + new Date().toUTCString() + ' — Active runways: ' + ([...activeRunways].join(', ') || 'none selected');
-  } catch(e) {
+
+    const rows = deps.map(dep => {
+      const wp    = firstWaypoint(dep.route);
+      const hit   = matchSid(wp, airport, activeRunways);
+      const check = checkSemicircular(dep.flightPlan, airport, dep.dest);
+      return { ...dep, firstWp: wp, sid: hit ? hit.sid : '', check };
+    });
+
+    const matched   = rows.filter(r => r.sid).length;
+    const unmatched = rows.length - matched;
+    const flErrors  = rows.filter(r => r.check?.status === 'error').length;
+
+    statTotal.textContent     = String(rows.length);
+    statMatched.textContent   = String(matched);
+    statUnmatched.textContent = String(unmatched);
+    statFlErr.textContent     = String(flErrors);
+
+    resultsBody.innerHTML = rows.map(r => `
+      <tr>
+        <td class="cs">${r.callsign}</td>
+        <td>${r.airport}</td>
+        <td>${r.dest || '—'}</td>
+        <td>—</td>
+        <td class="wp">${r.firstWp || '—'}</td>
+        <td class="sid-cell">${r.sid || '—'}</td>
+        ${flCellHtml(r.check)}
+        ${statusCellHtml(!!r.sid, r.check)}
+      </tr>
+    `).join('');
+
+    statusBox.textContent = `${airport}: ${rows.length} departure(s) · ${matched} SID matched · ${flErrors} FL error(s).`;
+    metaBox.textContent   = 'Last update: ' + new Date().toUTCString() + ' · Active runways: ' + ([...activeRunways].join(', ') || 'none');
+
+  } catch (e) {
     resultsBody.innerHTML = `<tr><td colspan="8" style="color:var(--red);padding:16px 8px">Error: ${e.message}</td></tr>`;
     statusBox.textContent = 'Error loading IVAO data.';
+    console.error(e);
   } finally {
     updateBtn.disabled = false;
     updateBtn.textContent = 'Update from IVAO';
