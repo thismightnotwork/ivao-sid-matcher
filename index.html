@@ -383,7 +383,7 @@ Object.entries(SID_REGISTRY).forEach(([icao, entry]) => {
 //   'metric'  – Russia, China, CIS: metric levels, no ICAO SCR applicable → skip
 //   'inverted'– Some southern hemisphere states invert (even E / odd W); flag as
 //               'inverted' so we can apply correctly
-//   'skip'    – Region doesn’t use ICAO SCR; show neutral SCR? tooltip
+//   'skip'    – Region doesn't use ICAO SCR; show neutral SCR? tooltip
 //
 // Keyed on the FIRST LETTER of the destination ICAO prefix.
 // Where a single letter is ambiguous (e.g. B = Iceland+Greenland+parts of Asia)
@@ -458,10 +458,10 @@ function parseFl(flightPlan) {
 
   // Helper: given raw FL digits (e.g. 350 from "F350"), return thousands
   // F350 = 35,000 ft = FL350; stored as 35.
-  // If someone files F35000 (feet directly) that’s >=10000 → divide by 1000.
+  // If someone files F35000 (feet directly) that's >=10000 → divide by 1000.
   const flDigitsToThousands = n => {
     if (n >= 10000) return Math.round(n / 1000); // raw feet
-    if (n >= 1000)  return Math.round(n / 100);  // shouldn’t happen but safe
+    if (n >= 1000)  return Math.round(n / 100);  // shouldn't happen but safe
     return Math.round(n / 10);                   // normal: 350 → 35
   };
 
@@ -494,6 +494,7 @@ function isVfr(flightPlan) {
 }
 
 // ─── Semicircular rule check ─────────────────────────────────────────────────────
+// ICAO Annex 2: Eastbound (000°–179°) = ODD FL, Westbound (180°–359°) = EVEN FL
 function bearingDeg(lat1, lon1, lat2, lon2) {
   const D2R = Math.PI / 180;
   const dLon = (lon2 - lon1) * D2R;
@@ -533,14 +534,18 @@ function checkSemicircular(flightPlan, depIcao, destIcao) {
       reason: `Bearing unknown – coords not found for ${missing}` };
   }
 
-  const bearing   = bearingDeg(depC[0], depC[1], destC[0], destC[1]);
-  // For 'inverted' (southern hemisphere some states): even E / odd W
+  const bearing = bearingDeg(depC[0], depC[1], destC[0], destC[1]);
+
+  // Eastbound: 000°–179°  → ODD FL required
+  // Westbound: 180°–359°  → EVEN FL required
+  // For 'inverted' (some southern hemisphere states): even E / odd W
   const inverted  = rule === 'inverted';
   const direction = bearing < 180 ? 'E' : 'W';
-  // ICAO: odd E, even W. Inverted: even E, odd W.
+
   const expParity = inverted
-    ? (direction === 'E' ? 'even' : 'odd')
-    : (direction === 'E' ? 'odd'  : 'even');
+    ? (direction === 'E' ? 'even' : 'odd')   // inverted: even=E, odd=W
+    : (direction === 'E' ? 'odd'  : 'even');  // ICAO:     odd=E,  even=W
+
   const actParity = fl % 2 === 1 ? 'odd' : 'even';
   const rvsm      = fl >= 29 && fl <= 41;  // FL290–FL410
   const ok        = actParity === expParity;
@@ -555,7 +560,7 @@ function checkSemicircular(flightPlan, depIcao, destIcao) {
     fl, bearing: Math.round(bearing), direction, expParity, actParity, rvsm,
     reason: ok
       ? `${flStr} ${dirWord} (${Math.round(bearing)}°) – ${actParity} FL ✓${rvsm ? ' [RVSM]' : ''}${ruleNote}`
-      : `${flStr} ${dirWord} (${Math.round(bearing)}°)${ruleNote}\nExpected ${expParity} FL, got ${actParity}\nNearest correct: FL${String(alt1*10).padStart(3,'0')} or FL${String(alt2*10).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
+      : `${flStr} ${dirWord} (${Math.round(bearing)}°)${ruleNote}\nExpected ${expParity} FL (${direction === 'E' ? 'East=Odd' : 'West=Even'}), got ${actParity}\nNearest correct: FL${String(alt1*10).padStart(3,'0')} or FL${String(alt2*10).padStart(3,'0')}${rvsm ? '\n[RVSM band]' : ''}`,
   };
 }
 
